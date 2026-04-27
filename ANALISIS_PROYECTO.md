@@ -1,77 +1,49 @@
-# Análisis de Arquitectura y Estructura del Proyecto: UshuaiaTravel (v2.0)
+# Análisis de Arquitectura y Estructura del Proyecto: UshuaiaTravel (v2.1)
 
-Este documento detalla la estructura, arquitectura avanzada y los componentes implementados en el proyecto UshuaiaTravel. El sistema ha evolucionado hacia una plataforma SaaS premium altamente escalable, resiliente y orientada a eventos, compuesta por un backend robusto en Django y un frontend optimizado en Next.js.
+Este documento detalla la estructura, arquitectura avanzada y los componentes implementados en UshuaiaTravel. El sistema ha evolucionado hacia una plataforma de costo-cero operativa, altamente eficiente y optimizada para el mercado local de Ushuaia, Argentina.
 
 ---
 
 ## 1. Visión General (Top-Down)
 
-El proyecto sigue una arquitectura de microservicios contenerizados (Docker Compose), donde la responsabilidad se divide estrictamente:
-- **Backend**: Lógica de negocio compleja, geolocalización, tareas asíncronas y extracción de datos.
-- **Frontend**: Renderizado híbrido (SSR/ISR), internacionalización y telemetría de usuario.
-- **Infraestructura de Datos**: Base de datos relacional con capacidades espaciales y caché en memoria.
-
-### Infraestructura de Servicios (Docker)
-*   **`core-api`**: Servidor principal de Django expuesto en el puerto 8000. Utiliza un *Multi-Stage Dockerfile* para optimizar el tamaño de la imagen en producción.
-*   **`worker-scraper`**: Nodo de procesamiento en segundo plano utilizando **Celery**. Se encarga de las tareas pesadas (scraping, envío de emails) sin bloquear la API principal.
-*   **`db`**: Base de datos **PostgreSQL con PostGIS** (imagen `postgis:14-3.3-alpine`) para soporte de búsquedas geolocalizadas.
-*   **`redis`**: Broker de mensajes para Celery y sistema de caché ultrarrápido para las respuestas de la API de DRF.
-*   **`frontend`**: Cliente construido en **Next.js** expuesto en el puerto 3000.
+El proyecto utiliza una arquitectura híbrida optimizada para eficiencia de recursos y escalabilidad:
+- **Backend (Django)**: Lógica de negocio, geolocalización (PostGIS) y motor de conversión de moneda.
+- **Frontend (React + Vite)**: Aplicación ultra-rápida con capacidades de PWA y soporte offline.
+- **Automatización (GitHub Actions)**: Procesamiento pesado de scraping y actualización de datos off-grid (fuera del servidor web).
+- **Infraestructura Cloud-Free**: Diseñado para correr en **Render (API)**, **Vercel (Frontend)** y **Supabase (PostgreSQL)** sin costos operativos fijos.
 
 ---
 
 ## 2. Análisis Detallado de Arquitectura y Patrones
 
-### A. Backend - El Núcleo (`hotels/` y `ushuaia_travel/`)
+### A. Backend - Inteligencia de Negocio y Conversión
+*   **Motor Multi-Moneda (`CurrencyService`)**: Integración con **DolarAPI** para obtener cotizaciones en tiempo real (Oficial, MEP, Blue). Permite al usuario ver precios en ARS o USD dinámicamente.
+*   **Geolocalización Avanzada**: Uso de **PostGIS** para almacenamiento y búsqueda de coordenadas de hoteles, permitiendo visualización espacial precisa.
+*   **Capa de Servicios**: La lógica de negocio está centralizada en servicios desacoplados, facilitando el mantenimiento y la extensibilidad del sistema de precios.
 
-Esta aplicación gestiona la lógica empresarial avanzada bajo estrictos patrones de diseño de software.
+### B. Frontend - PWA y Diseño Premium
+*   **Ecosistema React + Vite**: Migración a un entorno de desarrollo moderno que prioriza la velocidad de carga (HMR) y un bundle optimizado.
+*   **Capacidades PWA (Progressive Web App)**: 
+    *   **Soporte Offline**: Service Workers configurados para cachear datos de hoteles y assets estáticos, permitiendo el uso de la web sin conexión en zonas remotas de la Patagonia.
+    *   **Instalabilidad**: La aplicación puede instalarse en dispositivos móviles como una app nativa.
+*   **Componentes Atómicos y Premium**:
+    *   **Mapa Interactivo (Leaflet)**: Visualización geoespacial de hoteles con clusters y popups informativos.
+    *   **Price Comparison Widget**: Herramienta de visualización que destaca el ahorro entre plataformas (Booking vs. Otros).
 
-*   **Modelos y Base de Datos Avanzada (`models.py`)**
-    *   **Patrón `BaseModel` y Soft Delete**: Todos los modelos heredan de un modelo base abstracto que provee auditoría de fechas (`created_at`, `updated_at`) y borrado lógico (`deleted_at`), previniendo la pérdida accidental de datos históricos mediante un `SoftDeleteManager`.
-    *   **`Hotel`**: Modelo central optimizado. Incorpora `PointField` de PostGIS para búsquedas por radio geográfico, y `SearchVectorField` (con `GinIndex`) para búsquedas de texto completo (Full-Text Search).
-    *   **`PriceAlert`**: Nuevo modelo orientado a eventos, almacena umbrales de precios para notificar a los usuarios.
+### C. Automatización y Scraping de Bajo Costo
+*   **Scraping con GitHub Actions**: El proceso de extracción de datos (Playwright) se ha movido a flujos de trabajo de GitHub. Esto elimina la necesidad de mantener Workers de Celery encendidos 24/7, reduciendo el consumo de RAM en el servidor de producción a casi cero.
+*   **Alertas Integradas**: El sistema de notificaciones de caída de precios se dispara automáticamente al finalizar el scraping diario, garantizando que el usuario reciba la información sin retrasos.
+*   **Stealth Scraping**: Uso de `playwright-stealth` para evadir bloqueos de plataformas de reserva, asegurando la integridad de los datos diarios.
 
-*   **Capa de Servicios y Señales (`services.py` y `signals.py`)**
-    *   **Patrón Service Layer**: La lógica de cálculo complejo (como el rango de precios y mínimos) se extrajo a `HotelService`. Esto desacopla las reglas de negocio de los modelos y las vistas.
-    *   **Orientación a Eventos (Signals)**: Al insertarse o modificarse un precio, un *signal* de Django dispara automáticamente el recálculo en el caché del hotel sin que la vista intervenga.
-
-*   **Vistas Optimizadas y Caché (`views.py`)**
-    *   **Prevención N+1**: Los `ViewSets` utilizan agresivamente `prefetch_related` (ej. `Prefetch('prices', ...)` y `amenities`) para resolver jerarquías de datos complejas en 2 consultas a la base de datos en lugar de cientos.
-    *   **Caché en Redis**: Los endpoints pesados (como la lista de hoteles filtrada) están decorados con `@method_decorator(cache_page)` para servir respuestas en milisegundos directamente desde la memoria RAM.
-
-*   **Tareas Asíncronas y Automatización (`tasks.py`)**
-    *   **Celery Beat**: Configurado en `settings.py` para disparar el scraping de plataformas a las 3:00 AM (`scrape-booking-daily`).
-    *   **Alertas de Precio**: Tareas asíncronas (`check_price_drops_and_notify`) evalúan caídas de precio y notifican vía correo electrónico mediante SendGrid/SES.
-
-*   **Seguridad, Red y Nube (`settings.py`)**
-    *   **AWS S3**: Integración nativa con `django-storages` para alojar *media* y *staticfiles* en la nube.
-    *   **Throttling en DRF**: Límites de peticiones estrictos (100/día anónimos, 1000/día usuarios) para mitigar el raspado abusivo de nuestra API por terceros.
-    *   **CORS y SSL**: Políticas de orígenes cruzados restringidas a los dominios autorizados y redirección segura obligatoria.
-
-### B. Módulo de Scraping Resiliente (`scrapers/`)
-
-*   **Aislamiento de Contextos**: El `BookingScraper` evolucionó para manejar iteraciones de extracción complejas utilizando `context.new_page()` de Playwright. Esto permite abrir instancias de navegación limpias e independientes por cada hotel, evitando la polución de cookies y previniendo la pérdida de la página de resultados principal de búsqueda.
-
-### C. Frontend - Next.js App Router (`frontend/`)
-
-El cliente transicionó de una SPA clásica a un ecosistema Server-Side para potenciar el SEO orgánico.
-
-*   **Generación Estática Incremental (ISR) y Rutas Dinámicas**
-    *   `app/hotels/[id]/page.tsx`: Las páginas de detalle de hotel son generadas en el servidor durante la construcción (build-time) mediante `generateStaticParams`, garantizando tiempos de carga ínfimos (First Contentful Paint). La revalidación automática (`revalidate = 3600`) asegura que la información de precios no envejezca más de una hora.
-*   **Lazy Loading Dinámico de Componentes Críticos**
-    *   Componentes pesados o dependientes del objeto global `window` (como los mapas de Leaflet/Mapbox) se cargan diferidos (`next/dynamic` con `ssr: false`), eliminando el bloqueo del hilo principal de ejecución.
-*   **Cliente HTTP Resiliente (`api/client.ts`)**
-    *   Instancia global configurada para interceptar errores de red (`429 Too Many Requests`) y gestionar *timeouts* estrictos.
-*   **Internacionalización (i18n)**
-    *   Middleware estructural de Next.js (`next-intl/middleware`) que inyecta enrutamiento según la preferencia de idioma del navegador del turista (ES, EN, PT).
-*   **Telemetría y Analítica Integrada**
-    *   Integración pasiva con **PostHog** mediante un proveedor global de contexto en el layout maestro (`RootLayout`). Permite mapas de calor, grabación de sesiones y embudos de conversión sin comprometer la métrica *Core Web Vitals*.
+### D. Gestión de Infraestructura
+*   **Makefile**: Unificación de comandos para desarrollo local (`make build`, `make up`, `make scraper`).
+*   **CI/CD**: Pipeline automatizado para validación de código y despliegue continuo a entornos de producción.
 
 ---
 
-## 3. Conclusión Arquitectónica
+## 3. Conclusión Arquitectónica (v2.1)
 
-UshuaiaTravel ha madurado hasta convertirse en un entorno "Enterprise-Ready". La aplicación es capaz de:
-1.  **Soportar Picos de Tráfico (Alta Concurrencia):** Gracias a Redis, Caché de API y Generación Estática (ISR).
-2.  **Mantenerse Confiable:** Separando procesos costosos mediante Celery Workers y protegiendo la base de datos de consultas N+1.
-3.  **Proveer una Base Sólida para el Negocio Local:** Preparada para monetizar mediante sistema Multi-Lenguaje, métricas precisas (PostHog), almacenamiento Geoespacial (PostGIS) y orquestación multi-nube con AWS S3.
+UshuaiaTravel ha madurado hacia un modelo de **SaaS de Bajo Costo** pero de **Alta Fidelidad**. La arquitectura actual permite:
+1.  **Cero Costo Operativo**: Aprovechando las capas gratuitas de Supabase, Render, Vercel y GitHub Actions.
+2.  **Resiliencia Geográfica**: Preparada para el entorno de Ushuaia con soporte offline real.
+3.  **Diferenciación Competitiva**: Ofreciendo conversión multimoneda y comparativa de precios real que las OTAs tradicionales no proveen para el mercado argentino.
