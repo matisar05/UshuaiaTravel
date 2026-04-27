@@ -1,24 +1,24 @@
-FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+FROM python:3.11-slim as builder
 
-# Configurar variables de entorno
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Instalar dependencias de Python
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y gcc libpq-dev
 
-# Asegurarse de que los navegadores requeridos estén instalados
-RUN playwright install chromium
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
 
-# Copiar el código del proyecto
-COPY . /app/
+FROM python:3.11-slim
 
-# Exponer el puerto
-EXPOSE 8000
+WORKDIR /app
 
-# Comando por defecto para producción (Gunicorn)
-# docker-compose sobreescribirá este comando para desarrollo
-CMD ["gunicorn", "ushuaia_travel.wsgi:application", "--bind", "0.0.0.0:8000"]
+COPY --from=builder /app/wheels /wheels
+COPY --from=builder /app/requirements.txt .
+
+RUN pip install --no-cache /wheels/*
+
+COPY . .
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "ushuaia_travel.wsgi:application"]

@@ -1,40 +1,20 @@
 import axios from 'axios';
 
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 10000,
+export const apiClient = axios.create({
+    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1',
+    timeout: 10000,
+    headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
 });
 
-// Request interceptor
-apiClient.interceptors.request.use(
-  (config) => {
-    // Add any auth tokens here in the future
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Response interceptor
 apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Global error handling
-    if (error.response) {
-      // Server responded with error status
-      console.error('API Error:', error.response.data);
-    } else if (error.request) {
-      // Request made but no response
-      console.error('Network Error:', error.message);
-    } else {
-      console.error('Error:', error.message);
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 429) {
+            console.error("Rate limit excedido");
+        }
+        return Promise.reject(error);
     }
-    return Promise.reject(error);
-  }
 );
-
-export default apiClient;

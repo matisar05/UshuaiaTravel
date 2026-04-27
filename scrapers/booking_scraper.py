@@ -62,38 +62,25 @@ class BookingScraper(BaseScraper):
         pass # Placeholder, logic moved to scrape() method for correct flow
 
     def scrape(self, max_hotels=50):
-        """
-        Scrape Ushuaia hotels from Booking.com.
-        
-        Returns list of hotel dictionaries.
-        """
         hotels = []
-        
-        # Calculate future dates to ensure prices are shown
         from datetime import datetime, timedelta
         today = datetime.now()
         checkin_date = today + timedelta(days=7)
         checkout_date = checkin_date + timedelta(days=1)
         
-        # Format dates as YYYY-MM-DD
         checkin_str = checkin_date.strftime('%Y-%m-%d')
         checkout_str = checkout_date.strftime('%Y-%m-%d')
         
-        logger.info(f"Scraping for dates: {checkin_str} to {checkout_str}")
         url = self.build_search_url(checkin=checkin_str, checkout=checkout_str)
         
         if not self.safe_navigate(url):
-            logger.error("Failed to load Booking.com search page")
             return hotels
             
-        # Wait for results
         try:
             self.page.wait_for_selector('[data-testid="property-card"]', timeout=20000)
         except Exception:
-            logger.warning("Property cards not found")
             return hotels
         
-        # First extraction pass: Basic Info + URLs
         basic_listings = []
         hotel_cards = self.page.query_selector_all('[data-testid="property-card"]')
         
@@ -102,12 +89,11 @@ class BookingScraper(BaseScraper):
                 data = self._extract_basic_data(card)
                 if data:
                     basic_listings.append(data)
-            except Exception as e:
-                logger.error(f"Error extracting basic card: {e}")
+            except Exception:
+                pass
+
+        context = self.page.context
         
-        logger.info(f"Found {len(basic_listings)} hotels. Starting detailed scraping...")
-        
-        # Second pass: Visit each URL for details
         for listing in basic_listings:
             try:
                 if listing.get('platform_url'):
@@ -115,16 +101,20 @@ class BookingScraper(BaseScraper):
                     if not full_url.startswith('http'):
                         full_url = 'https://www.booking.com' + full_url
                     
-                    logger.info(f"Scraping details for: {listing.get('name')}")
+                    detail_page = context.new_page()
+                    from playwright_stealth import stealth_sync
+                    stealth_sync(detail_page)
+                    detail_page.goto(full_url, wait_until="domcontentloaded")
                     
-                    if self.safe_navigate(full_url):
-                        details = self._extract_page_details()
-                        listing.update(details)
-                        hotels.append(listing)
-                    else:
-                        logger.warning(f"Could not navigate to {full_url}")
-            except Exception as e:
-                logger.error(f"Error processing {listing.get('name')}: {e}")
+                    self.page = detail_page 
+                    details = self._extract_page_details()
+                    listing.update(details)
+                    hotels.append(listing)
+                    
+                    detail_page.close()
+            except Exception:
+                if 'detail_page' in locals() and not detail_page.is_closed():
+                    detail_page.close()
                 
         return hotels
 

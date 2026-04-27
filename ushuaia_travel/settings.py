@@ -102,36 +102,26 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# REST Framework
 REST_FRAMEWORK = {
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
-    ],
-    'DEFAULT_PARSER_CLASSES': [
-        'rest_framework.parsers.JSONParser',
-    ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 12,
-    'DEFAULT_FILTER_BACKENDS': [
-        'django_filters.rest_framework.DjangoFilterBackend',
-        'rest_framework.filters.SearchFilter',
-        'rest_framework.filters.OrderingFilter',
-    ],
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-    }
+        'anon': '100/day',
+        'user': '1000/day',
+    },
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.NamespaceVersioning',
+    'DEFAULT_VERSION': 'v1',
+    'ALLOWED_VERSIONS': ['v1', 'v2'],
+    'VERSION_PARAM': 'version',
 }
 
-# CORS Settings
-CORS_ALLOWED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://localhost:5173',
-    cast=Csv()
-)
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://www.ushuaia.travel",
+]
+
 CORS_ALLOW_CREDENTIALS = True
 
 # Security Settings (Production)
@@ -141,6 +131,14 @@ CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=False, cast=bool)
 SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=0, cast=int)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False, cast=bool)
 SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=False, cast=bool)
+
+# Cache Configuration (Using Local Memory for zero cost, move to Redis/Upstash for production)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
 
 # Scraper Settings
 SCRAPER_USER_AGENT = config(
@@ -153,3 +151,25 @@ SCRAPER_DELAY_MS = config('SCRAPER_DELAY_MS', default=2000, cast=int)
 GOOGLE_ADSENSE_CLIENT = config('GOOGLE_ADSENSE_CLIENT', default='')
 MERCADOPAGO_PUBLIC_KEY = config('MERCADOPAGO_PUBLIC_KEY', default='')
 PAYPAL_CLIENT_ID = config('PAYPAL_CLIENT_ID', default='')
+
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
+AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='ushuaia-travel-media')
+AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='sa-east-1')
+AWS_QUERYSTRING_AUTH = False
+
+# Celery is now OPTIONAL (Scraping moved to GitHub Actions)
+# To use Celery again, uncomment these and install redis/django-celery-beat
+# CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+# CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
+# CELERY_TIMEZONE = 'America/Argentina/Ushuaia'
+
+# NOTE: For Zero Cost Hosting, use Supabase for PostgreSQL (it includes PostGIS for free).
+# Set DATABASE_URL in your environment/secrets.

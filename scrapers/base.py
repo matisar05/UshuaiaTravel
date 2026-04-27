@@ -5,28 +5,41 @@ import time
 import logging
 from abc import ABC, abstractmethod
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+from playwright_stealth import stealth_sync
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
 
 class BaseScraper(ABC):
-    """Abstract base class for all scrapers."""
+    """Abstract base class for all scrapers with stealth capabilities."""
     
     def __init__(self, headless=True):
         self.headless = headless
         self.user_agent = getattr(settings, 'SCRAPER_USER_AGENT', 
                                   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         self.delay_ms = getattr(settings, 'SCRAPER_DELAY_MS', 2000)
+        self.proxy = getattr(settings, 'SCRAPER_PROXY', None) # Expected format: {"server": "...", "username": "...", "password": "..."}
         self.playwright = None
         self.browser = None
         self.page = None
     
     def __enter__(self):
-        """Context manager entry."""
+        """Context manager entry with stealth mode."""
         self.playwright = sync_playwright().start()
-        self.browser = self.playwright.chromium.launch(headless=self.headless)
-        self.page = self.browser.new_page(user_agent=self.user_agent)
+        
+        launch_kwargs = {'headless': self.headless}
+        if self.proxy:
+            launch_kwargs['proxy'] = self.proxy
+            
+        self.browser = self.playwright.chromium.launch(**launch_kwargs)
+        
+        context = self.browser.new_context(user_agent=self.user_agent)
+        self.page = context.new_page()
+        
+        # Apply stealth patterns
+        stealth_sync(self.page)
+        
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):

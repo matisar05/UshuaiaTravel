@@ -22,9 +22,11 @@ export interface Hotel {
   latitude?: number;
   longitude?: number;
   min_price?: number;
+  target_currency?: string;
   price_range?: {
-    min: number;
-    max: number;
+    min_price: number;
+    max_price: number;
+    currency: string;
   };
   created_at: string;
   updated_at: string;
@@ -35,8 +37,10 @@ export interface Price {
   id: number;
   hotel: number;
   platform: Platform;
+  platform_display: string;
   platform_url: string;
   price_per_night: number;
+  price_converted?: number;
   currency: Currency;
   room_type?: string;
   max_guests: number;

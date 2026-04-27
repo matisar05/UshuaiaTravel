@@ -5,9 +5,11 @@ from django.core.management import call_command
 
 
 class HotelsConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
     name = 'hotels'
 
     def ready(self):
+        import hotels.signals
         # Prevent running twice when using Django's auto-reloader
         if os.environ.get('RUN_MAIN') == 'true':
             def run_scraper():

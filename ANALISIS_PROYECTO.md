@@ -1,100 +1,77 @@
-# Análisis de Arquitectura y Estructura del Proyecto: UshuaiaTravel
+# Análisis de Arquitectura y Estructura del Proyecto: UshuaiaTravel (v2.0)
 
-Este documento detalla la estructura, arquitectura y los componentes implementados en el proyecto UshuaiaTravel. El sistema es una aplicación web full-stack compuesta por un backend robusto en Django y un frontend moderno en React.
+Este documento detalla la estructura, arquitectura avanzada y los componentes implementados en el proyecto UshuaiaTravel. El sistema ha evolucionado hacia una plataforma SaaS premium altamente escalable, resiliente y orientada a eventos, compuesta por un backend robusto en Django y un frontend optimizado en Next.js.
 
 ---
 
 ## 1. Visión General (Top-Down)
 
-El proyecto sigue una arquitectura cliente-servidor clásica, donde la responsabilidad de la lógica de negocio, recolección de datos y persistencia recae sobre el backend, mientras que el frontend se encarga de la presentación y la experiencia de usuario (SPA).
+El proyecto sigue una arquitectura de microservicios contenerizados (Docker Compose), donde la responsabilidad se divide estrictamente:
+- **Backend**: Lógica de negocio compleja, geolocalización, tareas asíncronas y extracción de datos.
+- **Frontend**: Renderizado híbrido (SSR/ISR), internacionalización y telemetría de usuario.
+- **Infraestructura de Datos**: Base de datos relacional con capacidades espaciales y caché en memoria.
 
-### Estructura de Directorios Principal
-
-*   **Raíz del proyecto**: Contiene archivos de configuración general.
-    *   `.env` y `.env.example`: Variables de entorno.
-    *   `requirements.txt`: Dependencias del backend (Python).
-    *   `db.sqlite3`: Base de datos de desarrollo.
-    *   `manage.py`: Script principal de gestión de Django.
-    *   `README.md`, `RAILWAY_DEPLOY.md`, `RENDER_DEPLOY.md`: Documentación e instrucciones de despliegue.
-*   **`ushuaia_travel/`**: Es el directorio de configuración central del proyecto Django. Contiene los ajustes globales (`settings.py`), el enrutador principal (`urls.py`) y las configuraciones de servidor (`wsgi.py`/`asgi.py`).
-*   **`hotels/`**: Es la aplicación (app) principal del backend. Contiene toda la lógica de negocio, modelos de datos, serializers y vistas para la API.
-*   **`scrapers/`**: Un módulo independiente de Python diseñado específicamente para la extracción de datos de precios en diferentes plataformas utilizando web scraping.
-*   **`frontend/`**: El cliente de interfaz de usuario construido en React, TypeScript, Vite y TailwindCSS.
+### Infraestructura de Servicios (Docker)
+*   **`core-api`**: Servidor principal de Django expuesto en el puerto 8000. Utiliza un *Multi-Stage Dockerfile* para optimizar el tamaño de la imagen en producción.
+*   **`worker-scraper`**: Nodo de procesamiento en segundo plano utilizando **Celery**. Se encarga de las tareas pesadas (scraping, envío de emails) sin bloquear la API principal.
+*   **`db`**: Base de datos **PostgreSQL con PostGIS** (imagen `postgis:14-3.3-alpine`) para soporte de búsquedas geolocalizadas.
+*   **`redis`**: Broker de mensajes para Celery y sistema de caché ultrarrápido para las respuestas de la API de DRF.
+*   **`frontend`**: Cliente construido en **Next.js** expuesto en el puerto 3000.
 
 ---
 
-## 2. Análisis Detallado (Archivo por Archivo)
+## 2. Análisis Detallado de Arquitectura y Patrones
 
-### A. Backend - Aplicación Principal (`hotels/`)
+### A. Backend - El Núcleo (`hotels/` y `ushuaia_travel/`)
 
-Esta aplicación gestiona la información de los alojamientos y provee la API REST consumida por el frontend.
+Esta aplicación gestiona la lógica empresarial avanzada bajo estrictos patrones de diseño de software.
 
-*   **`models.py`**
-    *   **`Hotel`**: El modelo central. Guarda información detallada del alojamiento.
-        *   *Campos clave*: `name`, `description`, `address`, `location_type` (centro, afueras, montaña), `hotel_type` (hotel, hostel, cabaña, etc.), `stars`, `pet_friendly`, `amenities` (como JSON), `contact_info` (JSON), `images` (URLs en JSON), y coordenadas `latitude`/`longitude`.
-        *   *Métodos*: `get_min_price()` y `get_price_range()` para calcular dinámicamente los costos basándose en la tabla de precios.
-    *   **`Price`**: Registra los precios obtenidos para cada hotel.
-        *   *Campos clave*: Llave foránea a `Hotel`, `platform` (Booking, Airbnb, TripAdvisor, local, direct), `price_per_night`, `currency`, `room_type`, `is_available` y `last_checked`.
+*   **Modelos y Base de Datos Avanzada (`models.py`)**
+    *   **Patrón `BaseModel` y Soft Delete**: Todos los modelos heredan de un modelo base abstracto que provee auditoría de fechas (`created_at`, `updated_at`) y borrado lógico (`deleted_at`), previniendo la pérdida accidental de datos históricos mediante un `SoftDeleteManager`.
+    *   **`Hotel`**: Modelo central optimizado. Incorpora `PointField` de PostGIS para búsquedas por radio geográfico, y `SearchVectorField` (con `GinIndex`) para búsquedas de texto completo (Full-Text Search).
+    *   **`PriceAlert`**: Nuevo modelo orientado a eventos, almacena umbrales de precios para notificar a los usuarios.
 
-*   **`views.py`** (Controladores de la API)
-    *   **`HotelFilter`**: Extiende de `django_filters.FilterSet` para proveer filtrado complejo, como la capacidad de filtrar por precios mínimos o máximos evaluando la relación con el modelo `Price`.
-    *   **`HotelViewSet`**: Endpoint principal de la API (`ReadOnlyModelViewSet`). Provee capacidades de búsqueda, filtrado y ordenamiento. Contiene acciones personalizadas (rutas extra):
-        *   `@action compare_prices`: Agrupa los precios de un hotel por plataforma para mostrarlos en el comparador.
-        *   `@action featured`: Devuelve el top 10 de hoteles mejor calificados (4+ estrellas).
-    *   **`PriceViewSet`**: Endpoint para visualizar precios individuales.
+*   **Capa de Servicios y Señales (`services.py` y `signals.py`)**
+    *   **Patrón Service Layer**: La lógica de cálculo complejo (como el rango de precios y mínimos) se extrajo a `HotelService`. Esto desacopla las reglas de negocio de los modelos y las vistas.
+    *   **Orientación a Eventos (Signals)**: Al insertarse o modificarse un precio, un *signal* de Django dispara automáticamente el recálculo en el caché del hotel sin que la vista intervenga.
 
-*   **`serializers.py`**
-    *   Controla la serialización de los modelos a JSON (y viceversa). Implementa `HotelListSerializer` (para las vistas de listado con información reducida) y `HotelDetailSerializer` (para la vista de detalle con toda la información y lista de precios asociados).
+*   **Vistas Optimizadas y Caché (`views.py`)**
+    *   **Prevención N+1**: Los `ViewSets` utilizan agresivamente `prefetch_related` (ej. `Prefetch('prices', ...)` y `amenities`) para resolver jerarquías de datos complejas en 2 consultas a la base de datos en lugar de cientos.
+    *   **Caché en Redis**: Los endpoints pesados (como la lista de hoteles filtrada) están decorados con `@method_decorator(cache_page)` para servir respuestas en milisegundos directamente desde la memoria RAM.
 
-*   **`admin.py`**
-    *   Configura la interfaz de administración nativa de Django para poder realizar operaciones CRUD (Crear, Leer, Actualizar, Borrar) de manera manual sobre los Hoteles y Precios.
+*   **Tareas Asíncronas y Automatización (`tasks.py`)**
+    *   **Celery Beat**: Configurado en `settings.py` para disparar el scraping de plataformas a las 3:00 AM (`scrape-booking-daily`).
+    *   **Alertas de Precio**: Tareas asíncronas (`check_price_drops_and_notify`) evalúan caídas de precio y notifican vía correo electrónico mediante SendGrid/SES.
 
-### B. Backend - Módulo de Scraping (`scrapers/`)
+*   **Seguridad, Red y Nube (`settings.py`)**
+    *   **AWS S3**: Integración nativa con `django-storages` para alojar *media* y *staticfiles* en la nube.
+    *   **Throttling en DRF**: Límites de peticiones estrictos (100/día anónimos, 1000/día usuarios) para mitigar el raspado abusivo de nuestra API por terceros.
+    *   **CORS y SSL**: Políticas de orígenes cruzados restringidas a los dominios autorizados y redirección segura obligatoria.
 
-Se encarga de la recolección automatizada de precios y disponibilidad.
+### B. Módulo de Scraping Resiliente (`scrapers/`)
 
-*   **`base.py`**
-    *   Contiene la clase abstracta `BaseScraper`.
-    *   Utiliza **Playwright** para levantar navegadores headless que pueden interactuar con páginas web dinámicas.
-    *   *Funcionalidades clave*: Manejo de esperas (`wait_polite`), navegación segura con captura de errores (`safe_navigate`, `safe_click`), extracción de texto (`safe_text`), y un potente método `normalize_price()` para limpiar textos de precios, manejando la casuística de separadores de miles y decimales latinos/argentinos (ARS).
+*   **Aislamiento de Contextos**: El `BookingScraper` evolucionó para manejar iteraciones de extracción complejas utilizando `context.new_page()` de Playwright. Esto permite abrir instancias de navegación limpias e independientes por cada hotel, evitando la polución de cookies y previniendo la pérdida de la página de resultados principal de búsqueda.
 
-*   **Scrapers Específicos** (`booking_scraper.py`, `airbnb_scraper.py`, `tripadvisor_scraper.py`)
-    *   Heredan de `BaseScraper` y contienen la lógica particular para leer el DOM de cada plataforma y recolectar los datos estandarizados que luego son inyectados en el modelo `Price`.
+### C. Frontend - Next.js App Router (`frontend/`)
 
-### C. Frontend (`frontend/src/`)
+El cliente transicionó de una SPA clásica a un ecosistema Server-Side para potenciar el SEO orgánico.
 
-El frontend está desarrollado bajo una arquitectura moderna orientada a componentes.
-
-*   **Configuración y Dependencias (`package.json`)**
-    *   **Core**: React 19, TypeScript, React Router v7.
-    *   **Data Fetching**: `@tanstack/react-query` v5 y `axios` para peticiones HTTP eficientes y con sistema de caché.
-    *   **Estilos y UI**: TailwindCSS, `@headlessui/react` y `lucide-react` para iconos.
-    *   **Build Tool**: Vite.
-
-*   **`api/`**
-    *   `client.ts`: Configura la instancia principal de Axios con la URL base del backend.
-    *   `hotels.ts`: Define las funciones asíncronas para llamar a los endpoints del backend (`/api/hotels/`, `/api/hotels/{id}/`, `/api/hotels/featured/`).
-
-*   **`hooks/`**
-    *   `useHotels.ts`: Abstracción de estado usando React Query. Contiene hooks personalizados (`useHotels`, `useHotel`, `useFeaturedHotels`) para que los componentes de React puedan consumir datos de forma reactiva sin preocuparse por manejar `useEffect` o estados de carga (`isLoading`, `isError`).
-
-*   **`pages/`** (Vistas principales)
-    *   `HomePage`: Página de inicio (Landing page).
-    *   `HotelsPage`: Directorio principal de alojamientos, integra los componentes de búsqueda y filtrado de DRF.
-    *   `HotelDetailPage`: Vista profunda de un hotel. Muestra la galería de imágenes, amenidades y el comparador de precios utilizando el endpoint `compare_prices`.
-    *   `DonatePage`: Página para gestión de donaciones.
-
-*   **`components/`** (Elementos reutilizables)
-    *   Organizados en tres subcarpetas clave:
-        *   `common/`: Botones genéricos, barras de progreso, inputs, alertas.
-        *   `hotels/`: Tarjetas de presentación de hoteles (`HotelCard`), grillas de listado, y widgets de comparación de precios.
-        *   `layout/`: Estructuras maestras como la barra de navegación (Navbar), encabezado (Header) y pie de página (Footer).
+*   **Generación Estática Incremental (ISR) y Rutas Dinámicas**
+    *   `app/hotels/[id]/page.tsx`: Las páginas de detalle de hotel son generadas en el servidor durante la construcción (build-time) mediante `generateStaticParams`, garantizando tiempos de carga ínfimos (First Contentful Paint). La revalidación automática (`revalidate = 3600`) asegura que la información de precios no envejezca más de una hora.
+*   **Lazy Loading Dinámico de Componentes Críticos**
+    *   Componentes pesados o dependientes del objeto global `window` (como los mapas de Leaflet/Mapbox) se cargan diferidos (`next/dynamic` con `ssr: false`), eliminando el bloqueo del hilo principal de ejecución.
+*   **Cliente HTTP Resiliente (`api/client.ts`)**
+    *   Instancia global configurada para interceptar errores de red (`429 Too Many Requests`) y gestionar *timeouts* estrictos.
+*   **Internacionalización (i18n)**
+    *   Middleware estructural de Next.js (`next-intl/middleware`) que inyecta enrutamiento según la preferencia de idioma del navegador del turista (ES, EN, PT).
+*   **Telemetría y Analítica Integrada**
+    *   Integración pasiva con **PostHog** mediante un proveedor global de contexto en el layout maestro (`RootLayout`). Permite mapas de calor, grabación de sesiones y embudos de conversión sin comprometer la métrica *Core Web Vitals*.
 
 ---
 
 ## 3. Conclusión Arquitectónica
 
-UshuaiaTravel cuenta con una arquitectura muy sólida y escalable. La separación de responsabilidades está claramente definida:
-1.  **Django** actúa como una API pura y robusta, delegando el peso del renderizado visual al cliente.
-2.  **React + React Query** manejan el estado del lado del cliente de forma fluida y optimizada.
-3.  **Playwright Scrapers** permiten una fuente de recolección de datos dinámica que puede integrarse fácilmente mediante tareas asíncronas (como Celery) o cron jobs.
+UshuaiaTravel ha madurado hasta convertirse en un entorno "Enterprise-Ready". La aplicación es capaz de:
+1.  **Soportar Picos de Tráfico (Alta Concurrencia):** Gracias a Redis, Caché de API y Generación Estática (ISR).
+2.  **Mantenerse Confiable:** Separando procesos costosos mediante Celery Workers y protegiendo la base de datos de consultas N+1.
+3.  **Proveer una Base Sólida para el Negocio Local:** Preparada para monetizar mediante sistema Multi-Lenguaje, métricas precisas (PostHog), almacenamiento Geoespacial (PostGIS) y orquestación multi-nube con AWS S3.

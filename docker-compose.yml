@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:14
+    image: postgis/postgis:14-3.3-alpine
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -12,7 +12,12 @@ services:
     ports:
       - "5432:5432"
 
-  backend:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  core-api:
     build:
       context: .
       dockerfile: Dockerfile
@@ -23,24 +28,40 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgres://ushuaia_user:ushuaia_pass@db:5432/ushuaia_db
+      - REDIS_URL=redis://redis:6379/0
       - DEBUG=True
     depends_on:
       - db
+      - redis
+
+  worker-scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A ushuaia_travel worker -l info
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgres://ushuaia_user:ushuaia_pass@db:5432/ushuaia_db
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=True
+    depends_on:
+      - db
+      - redis
 
   frontend:
-    # Para desarrollo local no usamos Nginx, sino Node con Vite (hot-reload)
     image: node:18-alpine
     working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
     ports:
-      - "5173:5173"
+      - "3000:3000"
     environment:
       - VITE_API_URL=http://localhost:8000/api
     depends_on:
-      - backend
+      - core-api
 
 volumes:
   postgres_data:

@@ -1,10 +1,30 @@
 from django.db import models
+from django.contrib.gis.db import models as gis_models
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.contrib.postgres.search import SearchVectorField
+from django.contrib.postgres.indexes import GinIndex
+from django.utils import timezone
 
+class SoftDeleteManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
 
-class Hotel(models.Model):
-    """Hotel model with all necessary information for tourism platform."""
-    
+class BaseModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    objects = SoftDeleteManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        abstract = True
+
+    def delete(self, *args, **kwargs):
+        self.deleted_at = timezone.now()
+        self.save()
+
+class Hotel(BaseModel):
     LOCATION_CHOICES = [
         ('centro', 'Centro'),
         ('afueras', 'Afueras de la Ciudad'),
@@ -19,12 +39,10 @@ class Hotel(models.Model):
         ('casa', 'Casa/Departamento'),
     ]
     
-    # Basic Information
     name = models.CharField(max_length=255, db_index=True)
     description = models.TextField(blank=True)
     address = models.CharField(max_length=500)
     
-    # Classification
     location_type = models.CharField(
         max_length=20,
         choices=LOCATION_CHOICES,
@@ -40,69 +58,31 @@ class Hotel(models.Model):
     stars = models.IntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(5)],
         default=0,
-        db_index=True,
-        help_text="0 = Sin clasificación"
+        db_index=True
     )
     
-    # Features
     pet_friendly = models.BooleanField(default=False, db_index=True)
-    amenities = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="JSON con amenities: wifi, parking, breakfast, pool, etc."
-    )
-    
-    # Contact
-    contact_info = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="JSON con phone, email, website"
-    )
-    
-    # Images
-    images = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="Array de URLs de imágenes"
-    )
+    amenities = models.JSONField(default=dict, blank=True)
+    contact_info = models.JSONField(default=dict, blank=True)
+    images = models.JSONField(default=list, blank=True)
     main_image = models.URLField(max_length=1000, blank=True)
     
-    # Geolocation
-    latitude = models.DecimalField(
-        max_digits=9,
-        decimal_places=6,
-        null=True,
-        blank=True
-    )
-    longitude = models.DecimalField(
-        max_digits=9,
-        decimal_places=6,
-        null=True,
-        blank=True
-    )
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    location = gis_models.PointField(geography=True, null=True, blank=True)
     
-    # Metadata
-    source_platform = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Plataforma de donde se extrajo originalmente"
-    )
-    external_id = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="ID en la plataforma externa"
-    )
+    source_platform = models.CharField(max_length=100, blank=True)
+    external_id = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    
+    cached_min_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, db_index=True)
+    search_vector = SearchVectorField(null=True)
     
     class Meta:
-        ordering = ['-stars', 'name']
-        verbose_name = 'Hotel'
-        verbose_name_plural = 'Hoteles'
         indexes = [
-            models.Index(fields=['location_type', 'hotel_type']),
-            models.Index(fields=['stars', 'pet_friendly']),
+            models.Index(fields=['stars', 'pet_friendly', 'location_type']),
+            GinIndex(fields=['search_vector']),
+            gis_models.Index(fields=['location']),
         ]
     
     def __str__(self):
@@ -195,3 +175,11 @@ class Price(models.Model):
     
     def __str__(self):
         return f"{self.hotel.name} - {self.get_platform_display()}: ${self.price_per_night}"
+
+
+class PriceAlert(models.Model):
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name='price_alerts')
+    user_email = models.EmailField()
+    target_price = models.DecimalField(max_digits=10, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)

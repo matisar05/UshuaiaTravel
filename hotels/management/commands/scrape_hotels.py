@@ -126,7 +126,7 @@ class Command(BaseCommand):
             price_per_night = data.get('price_per_night')
             
             if price_per_night:
-                Price.objects.update_or_create(
+                price_obj, created = Price.objects.update_or_create(
                     hotel=hotel,
                     platform=data.get('platform', 'booking'),
                     defaults={
@@ -136,6 +136,10 @@ class Command(BaseCommand):
                         'is_available': True,
                     }
                 )
+                
+                # Trigger alerts if price dropped (Integrated instead of Celery)
+                from hotels.tasks import check_price_drops_and_notify
+                check_price_drops_and_notify(hotel.id, price_per_night)
             
             return True
         

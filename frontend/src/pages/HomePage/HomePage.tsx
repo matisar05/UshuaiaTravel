@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, MapPin, Star, ArrowRight, Sparkles, TrendingUp, Mail, Heart, ExternalLink } from 'lucide-react';
+import { Search, MapPin, Star, ArrowRight, Sparkles, TrendingUp, Mail, Heart, ExternalLink, Map as MapIcon } from 'lucide-react';
 import { useFeaturedHotels } from '@/hooks/useHotels';
+import HotelCard from '@/components/hotels/HotelCard/HotelCard';
+import HotelMap from '@/components/hotels/HotelMap';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -182,42 +184,7 @@ export default function HomePage() {
               </div>
             )}
             {!isLoading && !isError && featuredHotels?.slice(0, 3).map((hotel: any) => (
-              <div key={hotel.id} className="group backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/10 hover:border-white/20 transition-all hover:-translate-y-2">
-                <div className="relative h-64 overflow-hidden">
-                  <img 
-                    src={hotel.image || hotel.main_image} 
-                    alt={hotel.name}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                  <div className="absolute top-4 right-4 backdrop-blur-md bg-black/30 border border-white/20 rounded-full px-4 py-2 flex items-center gap-2">
-                    {Array.from({ length: hotel.stars || 5 }).map((_, i) => (
-                      <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="p-6">
-                  <h3 className="text-2xl font-bold text-white mb-2">{hotel.name}</h3>
-                  <p className="text-slate-400 mb-4">{hotel.location || hotel.location_display}</p>
-                  
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <div className="text-sm text-slate-400 mb-1">Desde</div>
-                      <div className="text-3xl font-bold text-white">
-                        ${(hotel.min_price || hotel.price).toLocaleString('es-AR')}
-                      </div>
-                      <div className="text-sm text-slate-400">por noche</div>
-                    </div>
-                    <Link 
-                      to={`/hotel/${hotel.id}`}
-                      className="bg-gradient-to-r from-wood-500 to-wood-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg hover:shadow-wood-500/50 transition flex items-center gap-2"
-                    >
-                      Ver más
-                      <ArrowRight className="w-4 h-4" />
-                    </Link>
-                  </div>
-                </div>
-              </div>
+              <HotelCard key={hotel.id} hotel={hotel} />
             ))}
           </div>
 
@@ -225,6 +192,40 @@ export default function HomePage() {
             <Link to="/hoteles" className="backdrop-blur-md bg-white/10 border-2 border-white/20 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-white/20 transition inline-block">
               Ver todos los hoteles
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Interactive Map Section */}
+      <section className="py-24 bg-slate-900 border-t border-slate-800">
+        <div className="container mx-auto px-6">
+          <div className="flex flex-col md:flex-row items-end justify-between mb-12 gap-6">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2 text-blue-400 mb-4">
+                <MapIcon className="w-5 h-5" />
+                <span className="text-sm font-bold uppercase tracking-widest">Mapa Interactivo</span>
+              </div>
+              <h2 className="text-5xl font-bold text-white mb-6">Explora Ushuaia</h2>
+              <p className="text-xl text-slate-400">
+                Encuentra tu hospedaje ideal navegando por el mapa de la ciudad más austral del mundo.
+              </p>
+            </div>
+            <Link 
+              to="/hoteles" 
+              className="group flex items-center gap-2 text-white font-bold hover:text-blue-400 transition"
+            >
+              Ver todos en el mapa
+              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </Link>
+          </div>
+
+          <div className="relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition duration-1000"></div>
+            <div className="relative">
+              {!isLoading && featuredHotels && (
+                <HotelMap hotels={featuredHotels} />
+              )}
+            </div>
           </div>
         </div>
       </section>
