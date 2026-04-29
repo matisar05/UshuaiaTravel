@@ -1,13 +1,45 @@
-from django.db import models
-from django.contrib.gis.db import models as gis_models
+from __future__ import annotations
+
+import logging
+from decimal import Decimal
+from django.db import models, connection
 from django.core.validators import MinValueValidator, MaxValueValidator
-from django.contrib.postgres.search import SearchVectorField
-from django.contrib.postgres.indexes import GinIndex
 from django.utils import timezone
 
+logger = logging.getLogger(__name__)
+
+try:
+    from django.contrib.gis.db import models as gis_models
+    HAS_GIS = True
+except Exception:
+    HAS_GIS = False
+    logger.warning("GDAL not available. Geo-spatial features disabled.")
+
+
+def _is_postgresql() -> bool:
+    try:
+        return connection.vendor == "postgresql"
+    except Exception:
+        return False
+
+
+# PostgreSQL-only features
+HAS_PG = _is_postgresql()
+
+if HAS_PG:
+    from django.contrib.postgres.search import SearchVectorField
+    from django.contrib.postgres.indexes import GinIndex
+
+
+class SoftDeleteQuerySet(models.QuerySet):
+    def active(self) -> SoftDeleteQuerySet:
+        return self.filter(deleted_at__isnull=True)
+
+
 class SoftDeleteManager(models.Manager):
-    def get_queryset(self):
-        return super().get_queryset().filter(deleted_at__isnull=True)
+    def get_queryset(self) -> SoftDeleteQuerySet:
+        return SoftDeleteQuerySet(self.model, using=self._db).filter(deleted_at__isnull=True)
+
 
 class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -20,7 +52,7 @@ class BaseModel(models.Model):
     class Meta:
         abstract = True
 
-    def delete(self, *args, **kwargs):
+    def delete(self, *args, **kwargs) -> None:
         self.deleted_at = timezone.now()
         self.save()
 
@@ -69,39 +101,45 @@ class Hotel(BaseModel):
     
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    location = gis_models.PointField(geography=True, null=True, blank=True)
-    
+
     source_platform = models.CharField(max_length=100, blank=True)
     external_id = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
-    
+
     cached_min_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, db_index=True)
-    search_vector = SearchVectorField(null=True)
-    
+
     class Meta:
         indexes = [
-            models.Index(fields=['stars', 'pet_friendly', 'location_type']),
-            GinIndex(fields=['search_vector']),
-            gis_models.Index(fields=['location']),
+            models.Index(fields=["stars", "pet_friendly", "location_type"], name="hotel_filter_idx"),
         ]
-    
-    def __str__(self):
+
+
+if HAS_PG:
+    Hotel.add_to_class("search_vector", SearchVectorField(null=True))
+    Hotel._meta.indexes.append(GinIndex(fields=["search_vector"], name="hotel_search_vector_gin"))
+
+if HAS_GIS:
+    Hotel.add_to_class(
+        "location",
+        gis_models.PointField(geography=True, null=True, blank=True),
+    )
+    Hotel._meta.indexes.append(gis_models.Index(fields=["location"], name="hotel_location_gist"))
+
+    def __str__(self) -> str:
         return f"{self.name} ({self.get_hotel_type_display()})"
-    
-    def get_min_price(self):
-        """Get minimum price across all platforms."""
+
+    def get_min_price(self) -> Decimal | None:
         prices = self.prices.filter(is_available=True)
         if prices.exists():
-            return prices.order_by('price_per_night').first().price_per_night
+            return prices.order_by("price_per_night").first().price_per_night
         return None
-    
-    def get_price_range(self):
-        """Get price range for this hotel."""
+
+    def get_price_range(self) -> dict | None:
         prices = self.prices.filter(is_available=True)
         if prices.exists():
-            min_price = prices.order_by('price_per_night').first().price_per_night
-            max_price = prices.order_by('-price_per_night').first().price_per_night
-            return {'min': min_price, 'max': max_price}
+            min_price = prices.order_by("price_per_night").first().price_per_night
+            max_price = prices.order_by("-price_per_night").first().price_per_night
+            return {"min": min_price, "max": max_price}
         return None
 
 
@@ -112,6 +150,9 @@ class Price(models.Model):
         ('booking', 'Booking.com'),
         ('airbnb', 'Airbnb'),
         ('tripadvisor', 'TripAdvisor'),
+        ('despegar', 'Despegar'),
+        ('expedia', 'Expedia'),
+        ('amadeus', 'Amadeus'),
         ('local', 'Sitio Local'),
         ('direct', 'Sitio Oficial'),
     ]
@@ -169,17 +210,62 @@ class Price(models.Model):
         verbose_name = 'Precio'
         verbose_name_plural = 'Precios'
         indexes = [
-            models.Index(fields=['platform', 'is_available']),
-            models.Index(fields=['last_checked']),
+            models.Index(fields=['platform', 'is_available'], name="price_platform_avail_idx"),
+            models.Index(fields=['last_checked'], name="price_last_checked_idx"),
         ]
     
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.hotel.name} - {self.get_platform_display()}: ${self.price_per_night}"
 
 
 class PriceAlert(models.Model):
-    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name='price_alerts')
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="price_alerts")
     user_email = models.EmailField()
     target_price = models.DecimalField(max_digits=10, decimal_places=2)
+    target_currency = models.CharField(
+        max_length=3,
+        choices=Price.CURRENCY_CHOICES,
+        default="ARS",
+    )
     is_active = models.BooleanField(default=True)
+    notified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Alerta de Precio"
+        verbose_name_plural = "Alertas de Precio"
+        indexes = [
+            models.Index(fields=["hotel", "is_active"], name="pricealert_hotel_active_idx"),
+            models.Index(fields=["user_email"], name="pricealert_email_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_email} - {self.hotel.name} < ${self.target_price}"
+
+
+class PriceHistory(models.Model):
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, related_name="price_history")
+    platform = models.CharField(
+        max_length=20,
+        choices=Price.PLATFORM_CHOICES,
+        db_index=True,
+    )
+    price_per_night = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(
+        max_length=3,
+        choices=Price.CURRENCY_CHOICES,
+        default="ARS",
+    )
+    recorded_at = models.DateTimeField(db_index=True)
+    is_lowest_30d = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Historial de Precio"
+        verbose_name_plural = "Historial de Precios"
+        ordering = ["-recorded_at"]
+        indexes = [
+            models.Index(fields=["hotel", "platform", "recorded_at"], name="pricehist_hotel_plat_date_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.hotel.name} - {self.platform}: ${self.price_per_night} ({self.recorded_at.date()})"

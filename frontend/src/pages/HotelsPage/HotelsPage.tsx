@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import { Search, Filter, Star, MapPin, DollarSign, Home, ArrowLeft } from 'lucide-react';
 import { useHotels } from '@/hooks/useHotels';
 import HotelCard from '@/components/hotels/HotelCard/HotelCard';
-import LoadingSpinner from '@/components/common/LoadingSpinner/LoadingSpinner';
+import { HotelGridSkeleton } from '@/components/common/Skeleton/Skeleton';
 import type { HotelFilters } from '@/types';
+import { ROUTES } from '@/constants/routes';
+import { IMAGES } from '@/constants/images';
+import GoogleAdSense from '@/components/common/GoogleAdSense/GoogleAdSense';
 
 export default function HotelsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -27,13 +31,11 @@ export default function HotelsPage() {
   const [showFilters, setShowFilters] = useState(true);
   const [filters, setFilters] = useState<HotelFilters>(initialFilters);
   
-  // Local state for search bar inputs to avoid excessive URL updates while typing
   const [searchTerm, setSearchTerm] = useState(initialFilters.search || '');
   const [checkin, setCheckin] = useState(initialFilters.checkin || '');
   const [checkout, setCheckout] = useState(initialFilters.checkout || '');
-  const [guests, setGuests] = useState(initialFilters.guests || 2);
+  const [guests, setGuests] = useState<number | undefined>(initialFilters.guests);
 
-  // Update URL when filters change
   const updateUrl = (newFilters: HotelFilters) => {
     const params = new URLSearchParams();
     Object.entries(newFilters).forEach(([key, value]) => {
@@ -46,35 +48,30 @@ export default function HotelsPage() {
 
   const { data, isLoading, isError } = useHotels(filters);
 
-  const handleFilterChange = (key: keyof HotelFilters, value: any) => {
-    const newFilters = { ...filters, [key]: value, page: 1 }; // Reset to page 1 on filter change
+  const handleFilterChange = (key: keyof HotelFilters, value: string | number | boolean | undefined) => {
+    const newFilters = { ...filters, [key]: value, page: 1 };
     setFilters(newFilters);
     updateUrl(newFilters);
   };
 
   const clearFilters = () => {
-    const emptyFilters = {
-        search: '',
-        checkin: '',
-        checkout: '',
-        guests: 2
-    };
+    const emptyFilters: HotelFilters = { search: '', checkin: '', checkout: '' };
     setFilters(emptyFilters);
     setSearchTerm('');
     setCheckin('');
     setCheckout('');
-    setGuests(2);
+    setGuests(undefined);
     setSearchParams({});
   };
 
   const handleSearch = () => {
-    const newFilters = {
-        ...filters,
-        search: searchTerm,
-        checkin: checkin || undefined,
-        checkout: checkout || undefined,
-        guests: guests || undefined,
-        page: 1
+    const newFilters: HotelFilters = {
+      ...filters,
+      search: searchTerm,
+      checkin: checkin || undefined,
+      checkout: checkout || undefined,
+      guests: guests || undefined,
+      page: 1,
     };
     setFilters(newFilters);
     updateUrl(newFilters);
@@ -82,36 +79,18 @@ export default function HotelsPage() {
 
   return (
     <div className="min-h-screen bg-slate-900">
-      {/* Sticky Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-lg shadow-xl border-b border-slate-800">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-3">
-              <MapPin className="w-8 h-8 text-glacier-400" strokeWidth={2} />
-              <span className="text-2xl font-bold text-white">Ushuaia Travel</span>
-            </Link>
-            <div className="hidden md:flex items-center gap-6">
-              <Link to="/" className="text-white/90 hover:text-white font-medium transition">Inicio</Link>
-              <Link to="/hoteles" className="text-white hover:text-white font-medium transition border-b-2 border-glacier-500">Hoteles</Link>
-              <Link 
-                to="/donar"
-                className="bg-gradient-to-r from-wood-500 to-wood-600 text-white px-6 py-2 rounded-xl font-semibold hover:shadow-lg hover:shadow-wood-500/50 transition"
-              >
-                Apoyar
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
-
+      <Helmet>
+        <title>Hoteles en Ushuaia — Compará Precios y Encontrá el Mejor</title>
+        <meta name="description" content="Explorá +150 hoteles en Ushuaia. Filtrá por precio, estrellas, ubicación y tipo de alojamiento. Precios actualizados de múltiples plataformas." />
+      </Helmet>
       {/* Premium Dark Header */}
-      <section className="relative bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 pt-32 pb-16 border-b border-slate-700">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5?q=80&w=1920')] bg-cover bg-center opacity-5"></div>
+      <section className="relative bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 pb-16 border-b border-slate-700">
+        <div className="absolute inset-0 bg-[url('${IMAGES.HERO_BG}')] bg-cover bg-center opacity-5"></div>
         
         <div className="relative container mx-auto px-6">
           <Link 
-            to="/" 
-            className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition mb-8"
+            to={ROUTES.HOME}
+            className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition mb-8 pt-6"
           >
             <ArrowLeft className="w-5 h-5" />
             Volver al inicio
@@ -129,7 +108,7 @@ export default function HotelsPage() {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                   placeholder="Buscar hotel..."
                   className="w-full bg-white/20 backdrop-blur-sm text-white placeholder-white/60 px-4 py-3 rounded-xl border border-white/30 focus:outline-none focus:ring-2 focus:ring-glacier-500"
                 />
@@ -160,8 +139,8 @@ export default function HotelsPage() {
                 <input
                   type="number"
                   min="1"
-                  value={guests}
-                  onChange={(e) => setGuests(Number(e.target.value))}
+                  value={guests ?? ''}
+                  onChange={(e) => setGuests(e.target.value ? Number(e.target.value) : undefined)}
                   className="w-full bg-white/20 backdrop-blur-sm text-white px-4 py-3 rounded-xl border border-white/30 focus:outline-none focus:ring-2 focus:ring-glacier-500"
                 />
               </div>
@@ -364,11 +343,7 @@ export default function HotelsPage() {
               </div>
             </div>
 
-            {isLoading && (
-              <div className="flex justify-center py-20">
-                <LoadingSpinner size="lg" />
-              </div>
-            )}
+            {isLoading && <HotelGridSkeleton count={6} />}
             
             {isError && (
               <div className="text-center py-12 backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl">
@@ -379,11 +354,14 @@ export default function HotelsPage() {
             {!isLoading && !isError && data && (
               <>
                 {data.results.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {data.results.map(hotel => (
-                      <HotelCard key={hotel.id} hotel={hotel} />
-                    ))}
-                  </div>
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {data.results.map(hotel => (
+                        <HotelCard key={hotel.id} hotel={hotel} />
+                      ))}
+                    </div>
+                    <GoogleAdSense slot="1234567890" format="horizontal" className="mt-8" />
+                  </>
                 ) : (
                   <div className="text-center py-20 backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl">
                     <Search className="w-16 h-16 text-slate-500 mx-auto mb-4" />
@@ -399,7 +377,7 @@ export default function HotelsPage() {
                 )}
 
                 {/* Pagination */}
-                {data.count > 12 && (
+                {data.results.length > 0 && data.count > 20 && (
                   <div className="mt-12 flex justify-center gap-2">
                     <button
                       onClick={() => handleFilterChange('page', (filters.page || 1) - 1)}

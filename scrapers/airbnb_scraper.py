@@ -93,18 +93,15 @@ class AirbnbScraper(BaseScraper):
                 else:
                     # Fallback to visual texts
                     # Usually the first div with text is location, second is name/distance
-                    # This is brittle on Airbnb due to dynamic classes
                     pass
         except:
             pass
             
         # Price
-        # Look for the price element
         try:
             price_elem = card.query_selector('span._1y74zjx') or \
                          card.query_selector('[data-testid="price-availability-row"]') or \
                          card.query_selector('span._tyxjp1')
-            
             if price_elem:
                 data['price_per_night'] = self.normalize_price(price_elem.inner_text())
         except:
@@ -113,7 +110,6 @@ class AirbnbScraper(BaseScraper):
         # Rating
         try:
             rating_elem = card.query_selector('span[aria-hidden="true"]')
-            # Look for "4.92" pattern
             if rating_elem:
                 text = rating_elem.inner_text()
                 if '.' in text and len(text) <= 4:
@@ -135,11 +131,29 @@ class AirbnbScraper(BaseScraper):
         except:
              pass
 
+        # Room type / guests from card text
+        try:
+            card_text = card.inner_text()
+            import re
+            guest_match = re.search(r'(\d+)\s*(?:huésped|guest|hóspede)', card_text, re.IGNORECASE)
+            if guest_match:
+                data['max_guests'] = int(guest_match.group(1))
+
+            room_types = {
+                'entire': 'Casa/Dpto entero',
+                'private': 'Habitación privada',
+                'shared': 'Habitación compartida',
+            }
+            for key, label in room_types.items():
+                if key in card_text.lower():
+                    data['room_type'] = label
+                    break
+        except:
+            pass
+
         if not data.get('name'):
             # Fallback name extraction
             try:
-                # Airbnb structures are complex. Simplest is to assume the location or bold text is the name
-                # But typically 'name' is just "Flat in Ushuaia".
                 desc_line = card.query_selector('[data-testid="listing-card-title"]')
                 if desc_line:
                     data['name'] = desc_line.inner_text()

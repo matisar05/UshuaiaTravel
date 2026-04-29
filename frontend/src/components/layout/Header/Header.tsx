@@ -1,44 +1,36 @@
 import { Link } from 'react-router-dom';
 import { MapPin, Menu, X } from 'lucide-react';
 import { Disclosure } from '@headlessui/react';
+import { ROUTES } from '@/constants/routes';
 
 export default function Header() {
   return (
-    <Disclosure as="nav" className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-slate-200">
+    <Disclosure as="nav" className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-lg shadow-xl border-b border-slate-800">
       {({ open }) => (
         <>
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-18">
-              {/* Logo */}
-              <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <MapPin className="w-6 h-6 text-glacier-600" strokeWidth={2.5} />
-                <span className="text-xl font-bold text-slate-900">Ushuaia Travel</span>
+              <Link to={ROUTES.HOME} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                <MapPin className="w-8 h-8 text-glacier-400" strokeWidth={2} />
+                <span className="text-2xl font-bold text-white">Ushuaia Travel</span>
               </Link>
 
-              {/* Desktop Navigation */}
-              <div className="hidden md:flex items-center gap-2">
-                <Link
-                  to="/"
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-                >
+              <div className="hidden md:flex items-center gap-6">
+                <Link to={ROUTES.HOME} className="text-white/90 hover:text-white font-medium transition">
                   Inicio
                 </Link>
-                <Link
-                  to="/hoteles"
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-                >
+                <Link to={ROUTES.HOTELES} className="text-white/90 hover:text-white font-medium transition">
                   Hoteles
                 </Link>
-                <Link
-                  to="/donar"
-                  className="btn-primary ml-4"
-                >
+                <Link to={ROUTES.GUIA} className="text-white/90 hover:text-white font-medium transition">
+                  Guía
+                </Link>
+                <Link to={ROUTES.DONAR} className="bg-gradient-to-r from-wood-500 to-wood-600 text-white px-6 py-2 rounded-xl font-semibold hover:shadow-lg hover:shadow-wood-500/50 transition">
                   Apoyar
                 </Link>
               </div>
 
-              {/* Mobile menu button */}
-              <Disclosure.Button className="md:hidden p-2 rounded-lg text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-glacier-500">
+              <Disclosure.Button className="md:hidden p-2 rounded-lg text-slate-400 hover:bg-white/10 focus:outline-none">
                 {open ? (
                   <X className="w-6 h-6" />
                 ) : (
@@ -48,25 +40,18 @@ export default function Header() {
             </div>
           </div>
 
-          {/* Mobile Navigation */}
-          <Disclosure.Panel className="md:hidden border-t border-slate-200">
-            <div className="px-4 py-4 space-y-2">
-              <Link
-                to="/"
-                className="block px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-              >
+          <Disclosure.Panel className="md:hidden border-t border-slate-800">
+            <div className="px-4 py-4 space-y-2 bg-slate-900">
+              <Link to={ROUTES.HOME} className="block px-4 py-3 text-sm font-medium text-white hover:bg-white/10 rounded-lg transition-colors">
                 Inicio
               </Link>
-              <Link
-                to="/hoteles"
-                className="block px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-              >
+              <Link to={ROUTES.HOTELES} className="block px-4 py-3 text-sm font-medium text-white hover:bg-white/10 rounded-lg transition-colors">
                 Hoteles
               </Link>
-              <Link
-                to="/donar"
-                className="block w-full btn-primary mt-2"
-              >
+              <Link to={ROUTES.GUIA} className="block px-4 py-3 text-sm font-medium text-white hover:bg-white/10 rounded-lg transition-colors">
+                Guía
+              </Link>
+              <Link to={ROUTES.DONAR} className="block px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-wood-500 to-wood-600 rounded-lg transition">
                 Apoyar
               </Link>
             </div>

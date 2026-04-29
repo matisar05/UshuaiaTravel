@@ -1,25 +1,12 @@
-# Etapa 1: Build de la aplicación con Vite
-FROM node:18-alpine AS builder
+FROM node:22-alpine
 
 WORKDIR /app
 
-# Copiar dependencias e instalarlas
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY package*.json ./
+RUN npm install --legacy-peer-deps
 
-# Copiar el resto del código y compilar para producción
 COPY . .
-RUN npm run build
 
-# Etapa 2: Servidor web ultrarrápido (Nginx) para producción
-FROM nginx:alpine
+EXPOSE 5173
 
-# Copiar los estáticos compilados desde la etapa 1
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Configuración por defecto opcional para SPAs (React Router)
-# RUN echo "server { listen 80; location / { root /usr/share/nginx/html; index index.html index.htm; try_files \$uri \$uri/ /index.html; } }" > /etc/nginx/conf.d/default.conf
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]

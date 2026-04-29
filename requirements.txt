@@ -4,10 +4,14 @@ psycopg2-binary==2.9.9
 python-decouple==3.8
 django-cors-headers==4.3.1
 django-filter==23.5
-playwright==1.40.0
+django-stubs==4.2.*
+drf-spectacular==0.27.*
+freezegun==1.4.*
 gunicorn==21.2.0
 whitenoise==6.6.0
 requests==2.31.0
 Pillow==10.1.0
 dj-database-url==2.1.0
+playwright==1.40.0
 playwright-stealth==1.0.6
+django-storages[s3]==1.14.*

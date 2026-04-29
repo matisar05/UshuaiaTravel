@@ -27,39 +27,6 @@ class BookingScraper(BaseScraper):
         }
         query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
         return f"{self.BASE_URL}?{query_string}"
-    
-        if data.get('name') and data.get('price_per_night'):
-            # Visit detail page for more info
-            if data.get('platform_url') and not 'http' in data['platform_url']:
-                 data['platform_url'] = 'https://www.booking.com' + data['platform_url']
-
-            if data.get('platform_url'):
-                try:
-                    details = self._scrape_detail_page(data['platform_url'])
-                    if details:
-                        data.update(details)
-                except Exception as e:
-                    logger.warning(f"Failed to scrape details for {data.get('name')}: {str(e)}")
-            
-            return data
-        
-        return None
-
-    def _scrape_detail_page(self, url):
-        """Scrape detailed information from hotel page."""
-        details = {}
-        
-        # Open new page/tab or navigate current? 
-        # Better to use a new page context if possible, or navigate back.
-        # For simplicity in this structure, we'll safe_navigate, extract, and return.
-        # NOTE: This changes the current page state! The caller loop needs to handle this.
-        # Actually, since we are iterating a list of cards, the cards become stale if we navigate away.
-        # Strategy: Extract URLs first, THEN iterate URLs to scrape details.
-        
-        # Wait, the current architecture iterates cards on the search page.
-        # If we navigate away, we lose the search page context.
-        # Modification: We should grab basic info + URL from search page, then visit URLs one by one.
-        pass # Placeholder, logic moved to scrape() method for correct flow
 
     def scrape(self, max_hotels=50):
         hotels = []
@@ -134,18 +101,11 @@ class BookingScraper(BaseScraper):
         price_elem = card.query_selector('[data-testid="price-and-discounted-price"]')
         if not price_elem:
             price_elem = card.query_selector('.prco-valign-middle-helper')
-        # Price
-        price_elem = card.query_selector('[data-testid="price-and-discounted-price"]')
-        if not price_elem:
-            price_elem = card.query_selector('.prco-valign-middle-helper')
         
         if price_elem:
             data['price_per_night'] = self.normalize_price(price_elem.inner_text())
         else:
-             # Try generic match for price format with loose regex
              text = card.inner_text()
-             # Look for ARS or $ followed by numbers, handling spaces/dots/commas
-             # Matches: ARS 1.234, $ 1.234, ARS1234
              import re
              price_match = re.search(r'(?:ARS|\$)\s*([\d,.]+)', text)
              if price_match:
@@ -170,8 +130,14 @@ class BookingScraper(BaseScraper):
             
         # Stars
         rating_elem = card.query_selector('[data-testid="rating-stars"]')
+        if not rating_elem:
+            rating_elem = card.query_selector('[data-testid="rating-squares"]')
+        if not rating_elem:
+            rating_elem = card.query_selector('[aria-label*="stars"]')
+        if not rating_elem:
+            rating_elem = card.query_selector('[aria-label*="estrellas"]')
         if rating_elem:
-            stars_html = rating_elem.get_attribute('aria-label') or ''
+            stars_html = rating_elem.get_attribute('aria-label') or rating_elem.inner_text() or ''
             import re
             stars_match = re.search(r'(\d+)', stars_html)
             if stars_match:
@@ -185,6 +151,22 @@ class BookingScraper(BaseScraper):
         """Extract details from the currently open hotel page."""
         details = {}
         
+        # Stars (from detail page - more reliable than card)
+        try:
+            import re
+            stars_el = self.page.query_selector('[data-testid="rating-stars"]')
+            if not stars_el:
+                stars_el = self.page.query_selector('[data-testid="rating-squares"]')
+            if not stars_el:
+                stars_el = self.page.query_selector('.b5cd09854e')
+            if stars_el:
+                stars_text = stars_el.get_attribute('aria-label') or stars_el.inner_text() or ''
+                m = re.search(r'(\d+)', stars_text)
+                if m:
+                    details['stars'] = int(m.group(1))
+        except:
+            pass
+
         # Hotel Type
         try:
             type_elem = self.page.query_selector('[data-testid="property-type-badge"]')
@@ -248,6 +230,25 @@ class BookingScraper(BaseScraper):
                         self.page.query_selector('[data-node_tt_id="location_score_tooltip"]')
             if addr_elem:
                 details['address'] = self.clean_text(addr_elem.inner_text())
+        except:
+            pass
+
+        # Room type & max guests
+        try:
+            room_el = self.page.query_selector('.hprt-roomtype-link') or \
+                      self.page.query_selector('[data-testid="room-type"]') or \
+                      self.page.query_selector('.room-info h4')
+            if room_el:
+                details['room_type'] = self.clean_text(room_el.inner_text())
+
+            guests_el = self.page.query_selector('[data-testid="occupancy-config"]') or \
+                        self.page.query_selector('.bui-stepper__display')
+            if guests_el:
+                import re
+                text = guests_el.inner_text()
+                m = re.search(r'(\d+)\s*(?:adulto|huésped|persona)', text, re.IGNORECASE)
+                if m:
+                    details['max_guests'] = int(m.group(1))
         except:
             pass
 

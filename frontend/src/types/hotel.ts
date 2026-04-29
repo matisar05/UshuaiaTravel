@@ -28,6 +28,10 @@ export interface Hotel {
     max_price: number;
     currency: string;
   };
+  last_updated?: string;
+  best_platform?: string;
+  prices?: Price[];
+  price_history?: PriceHistoryEntry[];
   created_at: string;
   updated_at: string;
 }
@@ -60,7 +64,7 @@ export interface PriceComparison {
 // Enums
 export type HotelType = 'hotel' | 'hostel' | 'apart' | 'cabaña' | 'casa';
 export type LocationType = 'centro' | 'afueras' | 'montaña';
-export type Platform = 'booking' | 'airbnb' | 'tripadvisor' | 'local' | 'direct';
+export type Platform = 'booking' | 'airbnb' | 'tripadvisor' | 'despegar' | 'expedia' | 'amadeus' | 'local' | 'direct';
 export type Currency = 'ARS' | 'USD' | 'EUR';
 
 // Filter Parameters
@@ -86,4 +90,15 @@ export interface PaginatedResponse<T> {
   next: string | null;
   previous: string | null;
   results: T[];
+}
+
+export interface PriceHistoryEntry {
+  id: number;
+  hotel: number;
+  platform: Platform;
+  platform_display: string;
+  price_per_night: number;
+  currency: Currency;
+  recorded_at: string;
+  is_lowest_30d: boolean;
 }

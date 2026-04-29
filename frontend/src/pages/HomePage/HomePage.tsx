@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, MapPin, Star, ArrowRight, Sparkles, TrendingUp, Mail, Heart, ExternalLink, Map as MapIcon } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
+import { Search, MapPin, ArrowRight, Sparkles, TrendingUp, Mail, Heart, ExternalLink, Map as MapIcon } from 'lucide-react';
 import { useFeaturedHotels } from '@/hooks/useHotels';
 import HotelCard from '@/components/hotels/HotelCard/HotelCard';
 import HotelMap from '@/components/hotels/HotelMap';
+import type { Hotel } from '@/types';
+import { ROUTES, buildSearchRoute } from '@/constants/routes';
+import { IMAGES } from '@/constants/images';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -13,7 +17,7 @@ export default function HomePage() {
 
   const handleSearch = () => {
     if (searchTerm.trim()) {
-      navigate(`/hoteles?search=${encodeURIComponent(searchTerm.trim())}`);
+      navigate(buildSearchRoute(searchTerm.trim()));
     }
   };
 
@@ -27,10 +31,14 @@ export default function HomePage() {
 
   return (
     <div className="bg-slate-900">
+      <Helmet>
+        <title>Ushuaia Travel — Hoteles y Alojamientos en el Fin del Mundo</title>
+        <meta name="description" content="Compará precios de hoteles en Ushuaia. Encontrá el mejor precio en Booking, Airbnb, TripAdvisor y sitios locales. Información actualizada de alojamientos." />
+      </Helmet>
       {/* HERO MASIVO */}
       <section 
         className="relative min-h-screen bg-cover bg-center flex items-center justify-center"
-        style={{ backgroundImage: "url('https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5?q=80&w=1920')" }}
+        style={{ backgroundImage: `url('${IMAGES.HERO_BG}')` }}
       >
         {/* MINIMAL overlay - mountains clearly visible! */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/25 to-slate-900/40" />
@@ -50,10 +58,10 @@ export default function HomePage() {
                 <span className="text-2xl font-bold text-white">Ushuaia Travel</span>
               </div>
               <div className="hidden md:flex items-center gap-6">
-                <Link to="/" className="text-white/90 hover:text-white font-medium transition">Inicio</Link>
-                <Link to="/hoteles" className="text-white/90 hover:text-white font-medium transition">Hoteles</Link>
+                <Link to={ROUTES.HOME} className="text-white/90 hover:text-white font-medium transition">Inicio</Link>
+                <Link to={ROUTES.HOTELES} className="text-white/90 hover:text-white font-medium transition">Hoteles</Link>
                 <Link 
-                  to="/donar"
+                  to={ROUTES.DONAR}
                   className="bg-gradient-to-r from-wood-500 to-wood-600 text-white px-6 py-2 rounded-xl font-semibold hover:shadow-lg hover:shadow-wood-500/50 transition"
                 >
                   Apoyar
@@ -82,7 +90,7 @@ export default function HomePage() {
                   placeholder="¿Dónde quieres hospedarte?"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                   className="w-full bg-white/20 backdrop-blur-sm text-white placeholder-white/60 px-6 py-4 rounded-xl border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50 text-lg"
                 />
               </div>
@@ -183,13 +191,13 @@ export default function HomePage() {
                 Aún no hay hoteles destacados disponibles.
               </div>
             )}
-            {!isLoading && !isError && featuredHotels?.slice(0, 3).map((hotel: any) => (
+            {!isLoading && !isError && featuredHotels?.slice(0, 3).map((hotel: Hotel) => (
               <HotelCard key={hotel.id} hotel={hotel} />
             ))}
           </div>
 
           <div className="text-center mt-12">
-            <Link to="/hoteles" className="backdrop-blur-md bg-white/10 border-2 border-white/20 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-white/20 transition inline-block">
+            <Link to={ROUTES.HOTELES} className="backdrop-blur-md bg-white/10 border-2 border-white/20 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-white/20 transition inline-block">
               Ver todos los hoteles
             </Link>
           </div>
@@ -211,7 +219,7 @@ export default function HomePage() {
               </p>
             </div>
             <Link 
-              to="/hoteles" 
+              to={ROUTES.HOTELES} 
               className="group flex items-center gap-2 text-white font-bold hover:text-blue-400 transition"
             >
               Ver todos en el mapa
@@ -243,7 +251,7 @@ export default function HomePage() {
             Reserva ahora y vive la experiencia invernal más inolvidable en el Fin del Mundo
           </p>
           <Link
-            to="/hoteles"
+            to={ROUTES.HOTELES}
             className="inline-block bg-gradient-to-r from-wood-500 via-wood-600 to-wood-700 text-white px-12 py-6 rounded-2xl font-bold text-xl hover:shadow-2xl hover:shadow-wood-500/50 transition transform hover:scale-105"
           >
             Explorar Hoteles
@@ -273,17 +281,17 @@ export default function HomePage() {
               <h4 className="text-base font-semibold text-white">Enlaces</h4>
               <ul className="space-y-3">
                 <li>
-                  <Link to="/" className="text-sm text-slate-400 hover:text-white transition-colors">
+                  <Link to={ROUTES.HOME} className="text-sm text-slate-400 hover:text-white transition-colors">
                     Inicio
                   </Link>
                 </li>
                 <li>
-                  <Link to="/hoteles" className="text-sm text-slate-400 hover:text-white transition-colors">
+                  <Link to={ROUTES.HOTELES} className="text-sm text-slate-400 hover:text-white transition-colors">
                     Hoteles
                   </Link>
                 </li>
                 <li>
-                  <Link to="/donar" className="text-sm text-slate-400 hover:text-white transition-colors">
+                  <Link to={ROUTES.DONAR} className="text-sm text-slate-400 hover:text-white transition-colors">
                     Apoyar el proyecto
                   </Link>
                 </li>
@@ -304,7 +312,7 @@ export default function HomePage() {
                 </div>
                 <div className="pt-2">
                   <Link 
-                    to="/donar"
+                    to={ROUTES.DONAR}
                     className="inline-flex items-center gap-2 text-sm font-medium text-glacier-400 hover:text-glacier-300 transition-colors"
                   >
                     Apoya este proyecto

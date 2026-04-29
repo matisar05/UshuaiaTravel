@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from .models import Price
 from .services import HotelService
 
+
 @receiver(post_save, sender=Price)
-def update_hotel_min_price(sender, instance, created, **kwargs):
+def update_hotel_min_price(sender, instance: Price, created: bool, **kwargs) -> None:
     HotelService.update_cached_min_price(instance.hotel_id)

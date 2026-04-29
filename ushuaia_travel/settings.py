@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'django_filters',
+    'drf_spectacular',
     
     # Local apps
     'hotels',
@@ -39,6 +40,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Static files
     'corsheaders.middleware.CorsMiddleware',  # CORS
+    'ushuaia_travel.middleware.RequestLoggingMiddleware',  # Request logging
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -93,8 +95,6 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
 # Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -111,16 +111,28 @@ REST_FRAMEWORK = {
         'anon': '100/day',
         'user': '1000/day',
     },
-    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.NamespaceVersioning',
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
     'DEFAULT_VERSION': 'v1',
     'ALLOWED_VERSIONS': ['v1', 'v2'],
     'VERSION_PARAM': 'version',
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'ushuaia_travel.exceptions.exception_handler',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
 }
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "https://www.ushuaia.travel",
-]
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Ushuaia Travel API',
+    'DESCRIPTION': 'API de agregación de información turística para Ushuaia, Argentina.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
+
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='http://localhost:3000,http://localhost:5173',
+    cast=Csv()
+)
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -147,19 +159,37 @@ SCRAPER_USER_AGENT = config(
 )
 SCRAPER_DELAY_MS = config('SCRAPER_DELAY_MS', default=2000, cast=int)
 
-# Monetization (Optional)
+# Monetization
 GOOGLE_ADSENSE_CLIENT = config('GOOGLE_ADSENSE_CLIENT', default='')
 MERCADOPAGO_PUBLIC_KEY = config('MERCADOPAGO_PUBLIC_KEY', default='')
+MERCADOPAGO_ACCESS_TOKEN = config('MERCADOPAGO_ACCESS_TOKEN', default='')
+MERCADOPAGO_SUCCESS_URL = config('MERCADOPAGO_SUCCESS_URL', default='http://localhost:5173/donar?status=success')
+MERCADOPAGO_FAILURE_URL = config('MERCADOPAGO_FAILURE_URL', default='http://localhost:5173/donar?status=failure')
+MERCADOPAGO_PENDING_URL = config('MERCADOPAGO_PENDING_URL', default='http://localhost:5173/donar?status=pending')
 PAYPAL_CLIENT_ID = config('PAYPAL_CLIENT_ID', default='')
 
-STORAGES = {
-    "default": {
-        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-    },
-    "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-    },
-}
+# Amadeus API
+AMADEUS_API_KEY = config('AMADEUS_API_KEY', default='')
+AMADEUS_API_SECRET = config('AMADEUS_API_SECRET', default='')
+
+# RapidAPI
+RAPIDAPI_KEY = config('RAPIDAPI_KEY', default='')
+
+if config('USE_S3', default=False, cast=bool):
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+else:
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='ushuaia-travel-media')
 AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='sa-east-1')
@@ -173,3 +203,50 @@ AWS_QUERYSTRING_AUTH = False
 
 # NOTE: For Zero Cost Hosting, use Supabase for PostgreSQL (it includes PostGIS for free).
 # Set DATABASE_URL in your environment/secrets.
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{levelname}] {asctime} {module} {message}',
+            'style': '{',
+        },
+        'request': {
+            'format': '[{levelname}] {asctime} request_id={request_id} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'request': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'hotels': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'scrapers': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

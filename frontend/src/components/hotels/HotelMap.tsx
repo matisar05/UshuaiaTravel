@@ -1,13 +1,14 @@
-import React from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { Link } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import type { Hotel } from '@/types';
+import { buildHotelDetailRoute } from '@/constants/routes';
 
-// Fix for default marker icons in Leaflet with React
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
-let DefaultIcon = L.icon({
+const DefaultIcon = L.icon({
     iconUrl: icon,
     shadowUrl: iconShadow,
     iconSize: [25, 41],
@@ -16,26 +17,17 @@ let DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
-interface Hotel {
-    id: number;
-    name: string;
-    latitude: number;
-    longitude: number;
-    min_price: number;
-    target_currency: string;
-}
-
 interface HotelMapProps {
     hotels: Hotel[];
     center?: [number, number];
     zoom?: number;
 }
 
-const HotelMap: React.FC<HotelMapProps> = ({ 
+const HotelMap = ({ 
     hotels, 
-    center = [-54.8019, -68.3030], // Ushuaia Center
+    center = [-54.8019, -68.3030],
     zoom = 13 
-}) => {
+}: HotelMapProps) => {
     return (
         <div className="h-[400px] w-full rounded-xl overflow-hidden shadow-lg border border-gray-200">
             <MapContainer 
@@ -58,14 +50,14 @@ const HotelMap: React.FC<HotelMapProps> = ({
                                 <div className="p-1">
                                     <h3 className="font-bold text-sm">{hotel.name}</h3>
                                     <p className="text-xs text-blue-600 mt-1">
-                                        Desde {hotel.target_currency} {hotel.min_price?.toLocaleString()}
+                                        Desde {hotel.target_currency || 'ARS'} {hotel.min_price?.toLocaleString()}
                                     </p>
-                                    <a 
-                                        href={`/hotels/${hotel.id}`}
+                                    <Link 
+                                        to={buildHotelDetailRoute(hotel.id)}
                                         className="text-[10px] text-gray-500 hover:underline mt-2 block"
                                     >
                                         Ver detalles
-                                    </a>
+                                    </Link>
                                 </div>
                             </Popup>
                         </Marker>

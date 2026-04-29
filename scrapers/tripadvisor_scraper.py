@@ -1,272 +1,166 @@
 """
-TripAdvisor scraper for Ushuaia hotels
+TripAdvisor scraper for Ushuaia hotels (Playwright-based)
 """
-import time
 import logging
-from typing import List, Dict, Optional
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+import re
 from .base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
 
 class TripAdvisorScraper(BaseScraper):
-    """Scraper for TripAdvisor hotels in Ushuaia"""
-    
-    PLATFORM = 'tripadvisor'
-    BASE_URL = 'https://www.tripadvisor.com'
-    SEARCH_URL = 'https://www.tripadvisor.com/Hotels-g312848-Ushuaia_Province_of_Tierra_del_Fuego_Patagonia-Hotels.html'
-    
-    def __init__(self):
-        super().__init__()
-        self.max_retries = 3
-    
-    def search_hotels(self, location: str = "Ushuaia", **kwargs) -> List[Dict]:
-        """
-        Search for hotels in Ushuaia on TripAdvisor
-        
-        Args:
-            location: Location to search (default: Ushuaia)
-            **kwargs: Additional search parameters
-        
-        Returns:
-            List of hotel data dictionaries
-        """
-        logger.info(f"Starting TripAdvisor search for {location}")
-        
-        try:
-            driver = self.get_driver()
-            driver.get(self.SEARCH_URL)
-            
-            # Wait for listings to load
-            self._wait_for_listings(driver)
-            
-            # Handle cookie consent
-            self._handle_cookie_consent(driver)
-            
-            # Extract all listings
-            hotels = []
-            page = 1
-            max_pages = kwargs.get('max_pages', 3)
-            
-            while page <= max_pages:
-                logger.info(f"Scraping page {page}")
-                
-                # Extract listings from current page
-                page_hotels = self._extract_listings(driver)
-                hotels.extend(page_hotels)
-                
-                # Try to go to next page
-                if page < max_pages and not self._go_to_next_page(driver):
-                    break
-                
-                page += 1
-                time.sleep(self.get_random_delay())
-            
-            logger.info(f"Found {len(hotels)} TripAdvisor listings")
+    """Scraper for TripAdvisor hotels in Ushuaia using Playwright."""
+
+    PLATFORM = "tripadvisor"
+    BASE_URL = "https://www.tripadvisor.com"
+    SEARCH_URL = (
+        "https://www.tripadvisor.com/Hotels-g312848-"
+        "Ushuaia_Province_of_Tierra_del_Fuego_Patagonia-Hotels.html"
+    )
+
+    def get_platform_name(self):
+        return self.PLATFORM
+
+    def scrape(self, max_hotels=50):
+        hotels = []
+        logger.info(f"Starting TripAdvisor scrape (target: {max_hotels})")
+
+        if not self.safe_navigate(self.SEARCH_URL, timeout=40000):
+            logger.error("Failed to load TripAdvisor search page")
             return hotels
-            
-        except Exception as e:
-            logger.error(f"Error searching TripAdvisor: {str(e)}")
-            return []
-        finally:
-            self.close()
-    
-    def _wait_for_listings(self, driver, timeout: int = 15):
-        """Wait for hotel listings to appear"""
+
         try:
-            WebDriverWait(driver, timeout).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, '[data-automation="hotel-card"]'))
-            )
-            time.sleep(2)
-        except TimeoutException:
-            logger.warning("Timeout waiting for TripAdvisor listings")
-    
-    def _handle_cookie_consent(self, driver):
-        """Handle cookie consent popup"""
-        try:
-            accept_button = driver.find_element(By.ID, 'onetrust-accept-btn-handler')
-            accept_button.click()
-            time.sleep(1)
-        except NoSuchElementException:
-            pass
-    
-    def _extract_listings(self, driver) -> List[Dict]:
-        """Extract hotel data from current page"""
-        listings = []
-        
-        try:
-            # Try multiple selectors for hotel cards
-            cards = driver.find_elements(By.CSS_SELECTOR, '[data-automation="hotel-card"]')
-            
-            if not cards:
-                cards = driver.find_elements(By.CSS_SELECTOR, '.listing_title')
-            
-            logger.info(f"Found {len(cards)} hotel cards")
-            
-            for card in cards:
-                try:
-                    listing_data = self._parse_hotel_card(card)
-                    if listing_data:
-                        listings.append(listing_data)
-                except Exception as e:
-                    logger.warning(f"Error parsing hotel card: {str(e)}")
+            self.page.wait_for_selector('[data-automation="hotel-card"]', timeout=25000)
+            self.page.wait_for_timeout(2000)
+        except Exception:
+            logger.warning("Could not find TripAdvisor hotel cards")
+            return hotels
+
+        all_cards = []
+        for _ in range(3):
+            cards = self.page.query_selector_all('[data-automation="hotel-card"]')
+            for card in cards[len(all_cards):max_hotels]:
+                all_cards.append(card)
+            if len(all_cards) >= max_hotels:
+                break
+            if not self._go_to_next_page():
+                break
+
+        logger.info(f"Found {len(all_cards)} TripAdvisor cards total")
+
+        context = self.page.context
+
+        for card in all_cards:
+            try:
+                data = self._extract_card_data(card)
+                if not data or not data.get("name"):
                     continue
-        
-        except Exception as e:
-            logger.error(f"Error extracting listings: {str(e)}")
-        
-        return listings
-    
-    def _parse_hotel_card(self, card) -> Optional[Dict]:
-        """Parse individual hotel card"""
-        try:
-            # Extract name
-            name = None
-            try:
-                name_elem = card.find_element(By.CSS_SELECTOR, 'a[href*="Hotel_Review"]')
-                name = name_elem.text.strip()
-                url = name_elem.get_attribute('href')
-                if not url.startswith('http'):
-                    url = self.BASE_URL + url
-            except:
-                return None
-            
-            if not name:
-                return None
-            
-            # Extract rating
-            rating = None
-            try:
-                rating_elem = card.find_element(By.CSS_SELECTOR, '[aria-label*="bubbles"]')
-                rating_text = rating_elem.get_attribute('aria-label')
-                import re
-                rating_match = re.search(r'(\d+\.?\d*)', rating_text)
-                if rating_match:
-                    rating = float(rating_match.group(1))
-            except:
-                pass
-            
-            # Extract review count
-            review_count = None
-            try:
-                review_elem = card.find_element(By.CSS_SELECTOR, '[data-automation="reviewCount"]')
-                review_text = review_elem.text
-                import re
-                review_match = re.search(r'([\d,]+)', review_text)
-                if review_match:
-                    review_count = int(review_match.group(1).replace(',', ''))
-            except:
-                pass
-            
-            # Extract price
-            price_per_night = None
-            try:
-                price_elem = card.find_element(By.CSS_SELECTOR, '[data-automation="price"]')
-                price_text = price_elem.text
-                price_per_night = self._parse_price(price_text)
-            except:
-                pass
-            
-            # Extract image
-            image_url = None
-            try:
-                img_elem = card.find_element(By.CSS_SELECTOR, 'img')
-                image_url = img_elem.get_attribute('src')
-            except:
-                pass
-            
-            return {
-                'name': name,
-                'platform': self.PLATFORM,
-                'platform_url': url,
-                'price_per_night': price_per_night,
-                'rating': rating,
-                'review_count': review_count,
-                'image_url': image_url,
-            }
-        
-        except Exception as e:
-            logger.warning(f"Failed to parse hotel card: {str(e)}")
+
+                url = data.get("platform_url")
+                if url:
+                    detail_page = context.new_page()
+                    detail_page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    detail_page.wait_for_timeout(2000)
+
+                    self.page = detail_page
+                    details = self._extract_page_details()
+                    data.update(details)
+                    hotels.append(data)
+
+                    detail_page.close()
+                else:
+                    hotels.append(data)
+            except Exception as e:
+                logger.warning(f"Error processing TripAdvisor listing: {e}")
+
+        return hotels
+
+    def _extract_card_data(self, card) -> dict | None:
+        data: dict = {"platform": self.PLATFORM}
+
+        name_el = card.query_selector('a[href*="Hotel_Review"]')
+        if not name_el:
             return None
-    
-    def _parse_price(self, price_text: str) -> Optional[float]:
-        """Parse price from text"""
-        if not price_text:
+
+        name = (name_el.get_attribute("aria-label") or name_el.inner_text()).strip()
+        if not name:
             return None
-        
+        data["name"] = name
+
+        href = name_el.get_attribute("href") or ""
+        data["platform_url"] = self.BASE_URL + href if not href.startswith("http") else href
+
+        price_el = card.query_selector('[data-automation="price"]') or card.query_selector(".price")
+        if price_el:
+            data["price_per_night"] = self.normalize_price(price_el.inner_text())
+
+        rating_el = card.query_selector('[aria-label*="bubbles"]')
+        if rating_el:
+            aria = rating_el.get_attribute("aria-label") or ""
+            m = re.search(r"(\d+\.?\d*)", aria)
+            if m:
+                data["stars"] = float(m.group(1))
+
+        count_el = card.query_selector('[data-automation="reviewCount"]')
+        if count_el:
+            text = count_el.inner_text()
+            m = re.search(r"([\d,]+)", text)
+            if m:
+                data["review_count"] = int(m.group(1).replace(",", ""))
+
+        img_el = card.query_selector("img")
+        if img_el:
+            src = img_el.get_attribute("src") or ""
+            if src and not src.startswith("data:"):
+                data["main_image"] = src
+                data["images"] = [src]
+
+        return data if data.get("name") else None
+
+    def _extract_page_details(self) -> dict:
+        details: dict = {}
+
+        addr_el = self.page.query_selector('[data-automation="hotel-address"]')
+        if addr_el:
+            details["address"] = self.clean_text(addr_el.inner_text())
+
+        amenity_els = self.page.query_selector_all('[data-automation="amenity"]')
+        if amenity_els:
+            details["amenities"] = [
+                self.clean_text(el.inner_text())
+                for el in amenity_els
+                if el.inner_text().strip()
+            ]
+
+        img_els = self.page.query_selector_all('img[data-testid="photo-viewer-image"]')
+        if not img_els:
+            img_els = self.page.query_selector_all(".hero-image img, .large_photo_wrapper img")
+        images = []
+        for img in img_els[:8]:
+            src = img.get_attribute("src") or ""
+            if src and not src.startswith("data:") and "http" in src:
+                images.append(src)
+        if images:
+            details["images"] = images
+            details["main_image"] = images[0]
+
+        room_el = self.page.query_selector('[data-automation="room-type"]') or \
+                  self.page.query_selector(".room-info h3")
+        if room_el:
+            details["room_type"] = self.clean_text(room_el.inner_text())
+
+        return details
+
+    def _go_to_next_page(self) -> bool:
         try:
-            import re
-            # Match numbers with optional currency symbol
-            price_match = re.search(r'[\$]?\s*(\d{1,3}(?:[,\.]\d{3})*(?:[,\.]\d{2})?)', price_text)
-            if price_match:
-                price_str = price_match.group(1)
-                price_str = price_str.replace(',', '').replace('.', '')
-                if len(price_str) > 2:
-                    price_str = price_str[:-2] + '.' + price_str[-2:]
-                return float(price_str)
-        except Exception as e:
-            logger.warning(f"Failed to parse price '{price_text}': {str(e)}")
-        
-        return None
-    
-    def _go_to_next_page(self, driver) -> bool:
-        """Navigate to next page"""
-        try:
-            next_button = driver.find_element(By.CSS_SELECTOR, 'a[aria-label="Next page"]')
-            next_button.click()
-            time.sleep(self.get_random_delay(3, 6))
-            self._wait_for_listings(driver)
-            return True
-        except:
-            return False
-    
-    def get_hotel_details(self, url: str) -> Optional[Dict]:
-        """Get detailed information for a specific hotel"""
-        logger.info(f"Getting TripAdvisor hotel details: {url}")
-        
-        try:
-            driver = self.get_driver()
-            driver.get(url)
-            
-            WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'h1'))
-            )
-            time.sleep(3)
-            
-            details = {
-                'platform': self.PLATFORM,
-                'platform_url': url,
-            }
-            
-            # Name
-            try:
-                name_elem = driver.find_element(By.CSS_SELECTOR, 'h1')
-                details['name'] = name_elem.text.strip()
-            except:
-                pass
-            
-            # Address
-            try:
-                address_elem = driver.find_element(By.CSS_SELECTOR, '[data-automation="hotel-address"]')
-                details['address'] = address_elem.text.strip()
-            except:
-                pass
-            
-            # Amenities
-            try:
-                amenity_elems = driver.find_elements(By.CSS_SELECTOR, '[data-automation="amenity"]')
-                details['amenities'] = [elem.text.strip() for elem in amenity_elems if elem.text.strip()]
-            except:
-                details['amenities'] = []
-            
-            return details
-        
-        except Exception as e:
-            logger.error(f"Error getting hotel details: {str(e)}")
-            return None
-        finally:
-            self.close()
+            next_btn = self.page.query_selector('a[aria-label="Next page"]')
+            if not next_btn:
+                next_btn = self.page.query_selector(".nav.next")
+            if next_btn:
+                next_btn.click()
+                self.page.wait_for_timeout(4000)
+                self.page.wait_for_selector('[data-automation="hotel-card"]', timeout=15000)
+                return True
+        except Exception:
+            pass
+        return False
