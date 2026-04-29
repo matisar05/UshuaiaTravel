@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { ArrowLeft, MapPin, Star, Phone, Mail, Globe, Coffee, Dog, ExternalLink, Bell, TrendingDown, Zap, Clock } from 'lucide-react';
 import { useHotel, usePriceComparison } from '@/hooks/useHotels';
@@ -19,14 +19,6 @@ export default function HotelDetailPage() {
   const [alertPrice, setAlertPrice] = useState('');
   const [alertSent, setAlertSent] = useState(false);
   const [alertError, setAlertError] = useState('');
-
-  useEffect(() => {
-    if (location.hash === '#precios') {
-      setTimeout(() => {
-        document.getElementById('precios')?.scrollIntoView({ behavior: 'smooth' });
-      }, 300);
-    }
-  }, [location.hash, hotel]);
 
   const handleCreateAlert = async () => {
     if (!alertEmail || !alertPrice || !hotel) return;
@@ -245,6 +237,37 @@ export default function HotelDetailPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* Room Details */}
+            {hotel.prices && hotel.prices.length > 0 && (
+              <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl p-6 sticky top-24">
+                <h3 className="text-xl font-bold text-white mb-4">Habitaciones Disponibles</h3>
+                <div className="space-y-3">
+                  {hotel.prices.filter((p: Price) => p.is_available).slice(0, 4).map((p: Price) => (
+                    <div key={p.id} className="bg-white/5 border border-white/10 rounded-xl p-4">
+                      <span className="text-xs font-bold text-glacier-400 uppercase tracking-wider">
+                        {p.platform_display}
+                      </span>
+                      <p className="text-sm text-white mt-1 font-medium">
+                        {p.room_type || 'Habitación estándar'}
+                      </p>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
+                        <span>Hasta {p.max_guests} huéspedes</span>
+                        <span className="text-white font-bold">
+                          {p.currency} {Math.round(p.price_converted ?? p.price_per_night).toLocaleString('es-AR')}
+                        </span>
+                      </div>
+                      {p.platform_url && (
+                        <a href={p.platform_url} target="_blank" rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300">
+                          <ExternalLink className="w-3 h-3" /> Reservar
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {hotel.contact_info && Object.keys(hotel.contact_info).length > 0 && (
               <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl p-6 sticky top-24">
                 <h3 className="text-xl font-bold text-white mb-4">Contacto</h3>

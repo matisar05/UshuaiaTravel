@@ -125,7 +125,7 @@ export default function HotelCard({ hotel }: HotelCardProps) {
           </div>
 
           <Link
-            to={`${buildHotelDetailRoute(id)}#precios`}
+            to={buildHotelDetailRoute(id)}
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-100 hover:shadow-blue-200 active:scale-95"
           >
             Ver Precios

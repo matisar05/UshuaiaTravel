@@ -138,7 +138,7 @@ class TripAdvisorRapidAPI:
             self.HOST,
             "/api/v1/hotels/searchHotels",
             {
-                "geoId": "312848",  # Ushuaia
+                "geoId": "312855",  # Ushuaia correct geoId
                 "checkIn": check_in,
                 "checkOut": check_out,
                 "adults": adults,

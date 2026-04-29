@@ -64,14 +64,7 @@ class RapidAPISyncService:
         saved = 0
         for item in results[:max_hotels]:
             try:
-                hotel_id = item.get("id") or item.get("hotelId", "")
-                detail = {}
-                if hotel_id:
-                    try:
-                        detail = self.tripadvisor.get_hotel_details(str(hotel_id))
-                    except Exception:
-                        pass
-                self._save_tripadvisor(item, detail)
+                self._save_tripadvisor(item)
                 saved += 1
             except Exception as e:
                 logger.warning(f"Error saving TripAdvisor hotel: {e}")
@@ -182,25 +175,28 @@ class RapidAPISyncService:
 
         return hotel
 
-    def _save_tripadvisor(self, item: dict, detail: dict) -> Hotel | None:
-        name = detail.get("name") or item.get("title") or item.get("name", "")
+    def _save_tripadvisor(self, item: dict) -> Hotel | None:
+        name = item.get("title") or item.get("name", "")
         if not name:
             return None
 
-        address = detail.get("address") or item.get("address", "")
-        lat = detail.get("latitude") or item.get("latitude")
-        lon = detail.get("longitude") or item.get("longitude")
+        address = item.get("secondaryInfo") or item.get("address", "")
+        lat = item.get("latitude")
+        lon = item.get("longitude")
 
         stars = 0
-        rating = detail.get("rating") or item.get("rating", "")
-        if rating:
-            try:
-                stars = int(float(rating))
-            except (ValueError, TypeError):
-                pass
+        bubble = item.get("bubbleRating", {})
+        if isinstance(bubble, dict):
+            rating = bubble.get("rating", 0)
+        else:
+            rating = item.get("rating", "")
+        try:
+            stars = int(float(rating))
+        except (ValueError, TypeError):
+            pass
 
         images = []
-        for photo in detail.get("photos", []) or item.get("photos", []):
+        for photo in item.get("cardPhotos", []) or item.get("photos", []):
             if isinstance(photo, dict):
                 url = photo.get("url", "") or photo.get("sizes", {}).get("large", "")
             else:
@@ -209,7 +205,7 @@ class RapidAPISyncService:
                 images.append(url)
 
         amenities_list: list[str] = []
-        for a in detail.get("amenities", []) or item.get("amenities", []):
+        for a in item.get("amenities", []):
             if isinstance(a, dict):
                 amenities_list.append(a.get("name", ""))
             else:
@@ -242,13 +238,20 @@ class RapidAPISyncService:
                 longitude=float(lon) if lon else hotel.longitude,
             )
 
-        price_val = item.get("price") or detail.get("price")
+        price_val = None
+        import re
+        price_summary = item.get("priceSummary", "")
+        if price_summary:
+            m = re.search(r"from\s*\$?([\d,]+)", price_summary)
+            if m:
+                price_val = m.group(1).replace(",", "")
         if not price_val:
-            import re
             price_raw = item.get("priceForDisplay") or item.get("displayPrice") or ""
             m = re.search(r"[\d,.]+", str(price_raw))
             if m:
                 price_val = m.group(0).replace(",", "")
+
+        provider_url = f"https://www.tripadvisor.com/Hotel_Review-g312855-d{item.get('id','')}-Reviews.html"
 
         if price_val:
             try:
@@ -256,7 +259,7 @@ class RapidAPISyncService:
                     hotel=hotel,
                     platform="tripadvisor",
                     defaults={
-                        "platform_url": detail.get("url") or item.get("url", ""),
+                        "platform_url": provider_url,
                         "price_per_night": Decimal(str(price_val)),
                         "currency": item.get("currency", "ARS"),
                         "room_type": item.get("roomType", ""),
