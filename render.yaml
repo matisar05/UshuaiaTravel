@@ -7,9 +7,8 @@ services:
       pip install -r requirements.txt
       python manage.py collectstatic --noinput
       python manage.py migrate
-      python -m playwright install --with-deps chromium
+      playwright install --with-deps chromium
     startCommand: gunicorn ushuaia_travel.wsgi:application --bind 0.0.0.0:$PORT
-    plan: free
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -27,8 +26,6 @@ services:
           property: connectionString
       - key: MERCADOPAGO_ACCESS_TOKEN
         sync: false
-      - key: MERCADOPAGO_SUCCESS_URL
-        sync: false
       - key: RAPIDAPI_KEY
         sync: false
       - key: PAYPAL_CLIENT_ID
@@ -36,16 +33,14 @@ services:
       - key: GOOGLE_ADSENSE_CLIENT
         sync: false
 
-  - type: static
+  - type: static_site
     name: ushuaia-travel
-    env: static
     buildCommand: cd frontend && npm install --legacy-peer-deps && npm run build
     staticPublishPath: ./frontend/dist
     routes:
       - type: rewrite
         source: /api/*
         destination: https://usuhiaia-travel-api.onrender.com/api/*
-    plan: free
     envVars:
       - key: VITE_API_URL
         value: https://usuhiaia-travel-api.onrender.com/api/v1
@@ -54,6 +49,5 @@ services:
 
 databases:
   - name: ushuaia-travel-db
-    plan: free
     postgresMajorVersion: 14
     ipAllowList: []
